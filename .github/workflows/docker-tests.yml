@@ -1,0 +1,28 @@
+name: Docker integration tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install browser tooling
+        run: |
+          python -m pip install playwright==1.65.0
+          python -m playwright install --with-deps chromium
+      - name: Build and test frontend and aria2
+        run: python tests/run_docker.py --browser --channel chromium
+      - name: Stop disposable services
+        if: always()
+        run: docker compose down --volumes --remove-orphans

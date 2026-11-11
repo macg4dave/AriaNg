@@ -1,0 +1,44 @@
+services:
+  web:
+    build: .
+    image: ariang-test:local
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      aria2:
+        condition: service_healthy
+    networks:
+      - default
+      - frontend
+
+  aria2:
+    build:
+      context: .
+      target: aria2
+    image: ariang-aria2-test:local
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+      - /downloads:rw,noexec,nosuid,size=64m,mode=1777
+    secrets:
+      - aria2_rpc_secret
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+secrets:
+  aria2_rpc_secret:
+    file: ./.local/aria2/rpc-secret
+
+networks:
+  default:
+    internal: true
+  frontend:

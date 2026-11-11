@@ -131,3 +131,24 @@ Temporary Items
 *.code-workspace
 
 .tmp
+
+# Private local configuration, infrastructure details, and assistant settings
+.env
+.env.*
+!.env.example
+.local/
+*.local.json
+AGENTS.local.md
+CLAUDE.local.md
+.claude/settings.local.json
+.ssh/
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Python test runner caches
+__pycache__/
+*.pyc

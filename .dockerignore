@@ -1,0 +1,27 @@
+# Allow only build inputs. Private local files and Git history stay out.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!gulpfile.js
+!.eslintrc.json
+!LICENSE
+!src/
+!src/**
+!docker/
+!docker/nginx.conf
+!docker/aria2.conf
+!docker/aria2-start.sh
+!docker/aria2-healthcheck.sh
+# Exclusions also apply inside otherwise allowed source directories.
+**/.env
+**/.env.*
+**/.local/**
+**/*.local.*
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/id_rsa
+**/id_ed25519

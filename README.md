@@ -4,6 +4,14 @@
 [![Lastest Release](https://img.shields.io/github/release/mayswind/AriaNg.svg?style=flat)](https://github.com/mayswind/AriaNg/releases)
 
 ## Introduction
+
+For work on this fork, see [AGENTS.md](AGENTS.md) (shared Codex and Claude
+guidance), [CLAUDE.md](CLAUDE.md), and the [deployment plan](docs/DEPLOYMENT.md).
+Keep credentials and actual server details in private external configuration.
+
+For a local Debian/Nginx/aria2 test environment, run `python tests/run_docker.py`
+and open <http://localhost:8080>. See [Docker testing](docs/DOCKER.md).
+
 AriaNg is a modern web frontend making [aria2](https://github.com/aria2/aria2) easier to use. AriaNg is written in pure html & javascript, thus it does not need any compilers or runtime environment. You can just put AriaNg in your web server and open it in your browser. AriaNg uses responsive layout, and supports any desktop or mobile devices.
 
 ## Features
