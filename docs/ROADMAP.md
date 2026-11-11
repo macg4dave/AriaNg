@@ -9,7 +9,7 @@ This roadmap describes direction; individual tasks are tracked in [Backlog](BACK
 | 1. Project guidance | Shared agent rules, reusable prompts, and project docs | Complete: shared rules, neutral prompts and documentation index |
 | 2. Baseline | Core behavior inventory and reproducible synthetic performance workload | Complete for the current static app: inventory, workloads, commands, measurements and coverage limits in BASELINE.md/PERFORMANCE.md |
 | 3. Deployment | One-command deploy, dry-run, health checks, and rollback using external config | Complete for static Linux/SSH releases: Rust tooling and disposable end-to-end validation; no production rollout |
-| 4. Targeted implementation | Optimize measured bottlenecks; introduce Go/Rust components where justified | In progress: frontend/RPC fixes plus chart/history resource bounds implemented and measured; Rust gateway remains proposed |
+| 4. Targeted implementation | Optimize measured bottlenecks; introduce Go/Rust components where justified | In progress: frontend/RPC fixes and chart/history bounds measured; compatible Rust gateway transport/shared polling implemented and functionally checked |
 | 5. Load validation | Demonstrate improvements and recovery under agreed workloads | Awaiting targets and implementation |
 
 Baseline and deployment preparation may proceed independently where inputs are
@@ -86,8 +86,11 @@ the preceding one. GATE-02 must establish authentication and isolation before an
 browser integration. Never share snapshots across different upstream credentials
 or authorization scopes merely because the destination is the same. Deployment
 preparation can proceed alongside implementation, but runtime adoption requires
-GATE-05 and the contract in [Deployment](DEPLOYMENT.md). The gateway remains
-proposed; its architectural boundary is in [Architecture](ARCHITECTURE.md).
+GATE-05 and the contract in [Deployment](DEPLOYMENT.md). The first transport/shared
+read implementation now has source; see [Gateway](GATEWAY.md) for its actual
+contract. GATE-03/04 and production packaging under GATE-05 remain proposed.
+Existing settings explicitly opt into the HTTP compatibility endpoint; browser
+list derivation/filtering/rendering is unchanged.
 
 ### Along the way: reduce browser work
 

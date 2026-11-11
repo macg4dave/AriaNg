@@ -1,5 +1,62 @@
 # Performance
 
+## Rust gateway compatibility/shared-read stage (2026-11-11)
+
+Source: working-tree `server/gateway/`, compared with direct HTTP delivery to the
+same synthetic upstream. Windows x64, Rust 1.99.1, release optimization, four Tokio
+workers. Command:
+
+```sh
+cargo test --release --locked --manifest-path server/gateway/Cargo.toml --test load -- --ignored --nocapture
+```
+
+One process hosts the fixture upstream, gateway and 20 HTTP clients. Each phase
+issues five synchronized rounds at one-second spacing, 100 successful logical
+reads of a fixed 25-task list with 100 files/task. JSON bodies are about 294 KiB;
+there are no real downloads, peers, browser rendering or slow readers. Direct
+delivery runs first; gateway delivery runs second in the same process. The gateway
+polls one observed full-list signature, with one-second freshness. One recorded
+run of the final shared-immutable-snapshot implementation:
+
+| Metric | Direct | Gateway |
+| --- | --- | --- |
+| Completed requests / errors | 100 / 0 | 100 / 0 |
+| Upstream requests during phase | 100 | 4 |
+| End-to-end HTTP p95 / p99 ms | 18.281 / 20.205 | 13.164 / 14.378 |
+| Logical requests/s over observed interval | 24.820 | 24.854 |
+| Browser-side JSON response bytes | 29,359,300 | 29,359,300 |
+| Combined test-process CPU ms | 281.250 | 109.375 |
+| End-of-phase process working set bytes | 25,939,968 | 40,452,096 |
+
+Five rounds start at t=0 through t=4, so finite-interval throughput includes that
+boundary effect; it is not a saturation result or capacity target. Latency measures
+request send through complete response receipt. CPU is OS-reported process CPU,
+including client, upstream and gateway, sampled by the Rust harness using
+PowerShell Get-Process on Windows (or procfs on Linux). Working set is an endpoint
+sample, not peak/isolated gateway memory or reclaimed heap. Direct and gateway
+phases share process/allocator/pools and are order-biased; CPU deltas can include
+minor polling/sampling work at the boundaries. Upstream count can vary around
+freshness/timer boundaries. These short, single-run results demonstrate shared
+upstream reads, not production latency/CPU superiority. Full payload delivery
+leaves downstream bytes unchanged and adds snapshot memory. An earlier deep-copy
+implementation was slower and was replaced with shared immutable snapshot values.
+No production improvement or reported-freeze fix is established.
+
+Functional checks: 11 Rust tests passed, covering admission/slot/body/response
+bounds, authentication/origin and scope isolation, shared reads, failure/recovery,
+idle eviction, mutation invalidation, multicall validation and cancellation of slow
+polls at shutdown. The explicit `--test live -- --ignored --nocapture` check passed
+against disposable Compose aria2 with two browser contexts, waiting/detail/mobile
+views, multicall, task option changes and unauthorized access. It bridges the
+same-origin browser route to the actual gateway HTTP listener, substituting for a
+production proxy. It removes its paused fixture task. No private production config
+was read. Source startup, limits and remaining GATE-03/04/05 work are in GATEWAY.md.
+
+Still unmeasured: isolated upstream/gateway CPU/RSS, long peer/transfer soaks,
+slow-reader transport buffers, Linux runtime behavior, representative production
+inventories/users, and browser responsiveness/network effects with the gateway.
+No compact summaries or backend sorting/pagination are implemented in this stage.
+
 ## Status
 
 An initial frontend processing baseline and connection-recovery regression checks

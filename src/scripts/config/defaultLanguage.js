@@ -375,7 +375,10 @@
             },
             'rpc': {
                 'error': {
-                    'unauthorized': 'Authorization Failed!'
+                    'unauthorized': 'Authorization Failed!',
+                    'gateway.invalid': 'The gateway rejected this request. Check the RPC profile and request limits.',
+                    'gateway.busy': 'The gateway is busy or its snapshot limit has been reached. Try again later.',
+                    'gateway.failed': 'The download server rejected the operation.'
                 }
             },
             'option': {

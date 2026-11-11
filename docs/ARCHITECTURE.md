@@ -4,8 +4,8 @@
 
 This fork starts from AriaNg: an AngularJS browser application built with Gulp.
 The standard build produces static assets in `dist/`; the all-in-one build embeds
-assets in a single HTML file. There is no application backend written in Go or
-Rust in this repository yet.
+assets in a single HTML file. An optional Rust RPC gateway now lives in
+`server/gateway/`; its implemented boundary and limits are in [Gateway](GATEWAY.md).
 
 The browser communicates with separately managed aria2 services using HTTP or
 WebSocket RPC. The UI supports multiple RPC servers, task management, settings,
@@ -28,8 +28,8 @@ Docker network restricts tests to a locally served fixture. This test arrangemen
 does not select production hosting or authentication; see [Docker testing](DOCKER.md).
 
 - New or rewritten application server components use Go or Rust according to
-  workload and maintainability. Rust is requested for the proposed polling gateway;
-  no server runtime is implemented yet. Browser code uses appropriate tools.
+  workload and maintainability. The optional polling gateway uses Rust as requested,
+  with Axum/Tokio and reqwest; aria2 remains the download engine.
 - Static deployment now uses the dependency-free Rust operator in `tools/deploy/`,
   with a small remote POSIX-shell helper. Rust follows the tooling policy and
   keeps configuration/validation/deadlines in one portable binary; this is not
@@ -42,17 +42,19 @@ does not select production hosting or authentication; see [Docker testing](DOCKE
   existing aria2 and hosting do not require replacement merely for language choice.
 - Private infrastructure configuration remains external. Public browser assets
   cannot conceal credentials or destination addresses from browser users.
-- If hidden backend credentials or addresses require a proxy, its design must
-  provide authentication, authorization, externally configured destination
-  restrictions, and isolation between users and servers. This proxy is a proposal,
-  not an implemented component.
+- The gateway fixes destinations/credentials in external configuration, requires
+  a unique bearer credential per full-control scope, and isolates scope snapshots.
+  Existing HTTP profiles opt in through an operator-configured same-origin proxy.
+  This service is not packaged by the static deployment operator.
 
 ## Decisions still open
 
-### Rust backend assessment (2026-11-11; proposed)
+### Rust backend assessment (2026-11-11; incrementally implemented)
 
-The requested server language for this optimization work is Rust. No backend has
-been added in this first pass. The concrete candidate is a same-origin RPC gateway
+The requested server language is Rust. The first implementation supplies a
+compatible RPC endpoint, bounded shared list/global-stat snapshots, and forwarded
+detail/mutation calls. See GATEWAY.md for its current contract. The remaining
+proposed processing work is a same-origin RPC gateway
 that owns bounded upstream polling per authorized server, derives compact task
 summaries, and offers filtered/sorted pages or snapshot updates to clients. This
 could remove duplicated polling across browser clients and avoid delivering full
@@ -95,16 +97,14 @@ separate compatible design for selection, keyboard actions, and waiting-list dra
 positions. Waiting/stopped requests currently default to 1,000 items; active tasks
 have no equivalent limit. Pagination must preserve ordering and task controls.
 
-Before connecting the proposed gateway, define external destination allowlists,
-upstream credentials, browser authentication and per-user/server authorization.
-Never accept arbitrary browser-supplied upstream URLs or forward tokens through
-public config. Define bounded snapshots/payloads, deadlines, cancellation, freshness,
-failure status, slow-client behavior, and deployment/rollback with frontend version
-compatibility. Direct HTTP/WebSocket RPC and existing local settings must remain
-available, with explicit opt-in or migration for gateway profiles. Sorting/search
-semantics and selected task operations need integration parity checks. Static
-deployment remains the implemented contract.
+The compatibility implementation fixes destinations, upstream credentials and
+browser bearer authentication in private configuration, with per-scope server
+authorization. It bounds snapshots/payloads, deadlines, cancellation, freshness
+and admission. Slow-reader connection/write limits require a reverse proxy.
+Direct HTTP/WebSocket RPC and local settings remain available; gateway HTTP
+profiles explicitly opt in. Browser sorting/search/rendering remain unchanged.
+Static deployment remains the implemented deployment contract.
 
-The proposed gateway's API contracts,
-hosting OS, service lifecycle, authentication approach, and deployment transport
-remain to be selected. Do not treat these as implemented or invent server details.
+The versioned compatibility API, authentication and signal handling are implemented.
+Production service installation, readiness and binary/frontend rollback packaging
+remain open. No production destinations have been selected.

@@ -103,7 +103,10 @@ install/build/deploy command. Production access is neither needed nor authorized
 
 The source checkout, `.git`, `node_modules` and private configuration are never
 uploaded. Build-time variables and browser-delivered files cannot conceal secrets.
-Browser RPC settings remain local. The proposed Rust gateway is not packaged by
-this static tool: gateway adoption must extend the contract for compatible binary
+Browser RPC settings remain local. The optional Rust gateway in `server/gateway/`
+is not packaged by this static tool: gateway adoption must extend the contract for compatible binary
 versions, process lifecycle, private runtime config and gateway health/rollback
 under GATE-05. Stage 3 completion applies to the current static architecture.
+See [Gateway](GATEWAY.md) for source startup, private runtime schema, HTTP-profile
+opt-in, health/lifecycle behavior and required reverse-proxy limits. No gateway
+binary was installed, published or activated in production.

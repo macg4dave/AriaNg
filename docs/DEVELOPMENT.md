@@ -95,11 +95,16 @@ browser runner requires its own Python Playwright package; when unavailable, the
 JS browser smoke command covers the same routes/theme/language/mobile checks
 using the optional JS tooling above. No new Python dependency is needed.
 
-## Future server components
+## Application server components
 
-No Go module, Cargo workspace, or application server toolchain is selected yet. Document the
-chosen version, supported platform, source layout, and exact commands here when
-introducing one. Follow language-native formatting (gofmt or rustfmt); JavaScript
+The optional application gateway is a standalone Rust 2024 crate in
+`server/gateway/`, minimum Rust 1.85 (tested with 1.99.1 on Windows x64).
+`src/lib.rs` implements API/polling lifecycle, `src/main.rs` private-config startup,
+and Rust tests plus `tests/gateway-browser.cjs` check compatibility. Its lockfile
+is tracked. Startup, exact checks and the supported boundary are in
+[Gateway](GATEWAY.md). Linux signal handling is included but not runtime-validated.
+No Cargo workspace or Go module is introduced.
+Follow language-native formatting (gofmt or rustfmt); JavaScript
 formatting conventions do not override them. Maintain generated dependency locks.
 
 For Go, relevant checks include formatting, `go vet ./...`, `go test ./...`, the
