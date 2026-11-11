@@ -8,6 +8,7 @@ source of project context. Claude also reads the root `CLAUDE.md`.
 | [Architecture](ARCHITECTURE.md) | Current system, boundaries, and architectural decisions |
 | [Roadmap](ROADMAP.md) | Direction, sequencing, and unresolved decisions |
 | [Backlog](BACKLOG.md) | Identified work, status, dependencies, and acceptance criteria |
+| [Baseline](BASELINE.md) | Completed behavior inventory, synthetic workloads and coverage boundaries |
 | [Development](DEVELOPMENT.md) | Source layout, build commands, and verification |
 | [Docker testing](DOCKER.md) | Debian/Nginx test image and local lifecycle commands |
 | [Performance](PERFORMANCE.md) | Workload definition, measurement rules, and results |

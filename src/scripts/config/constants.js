@@ -16,6 +16,7 @@
         httpRequestTimeout: 20000,
         globalStatStorageCapacity: 120,
         taskStatStorageCapacity: 300,
+        taskStatHistoryCapacity: 32,
         lazySaveTimeout: 500,
         errorTooltipDelay: 500,
         notificationInPageTimeout: 2000,

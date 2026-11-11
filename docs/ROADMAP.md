@@ -6,18 +6,23 @@ This roadmap describes direction; individual tasks are tracked in [Backlog](BACK
 
 | Stage | Intended outcome | Current state |
 | --- | --- | --- |
-| 1. Project guidance | Shared agent rules, reusable prompts, and project docs | Documentation established; implementation work remains separate |
-| 2. Baseline | Core behavior inventory and reproducible synthetic performance workload | Initial frontend/RPC baseline recorded; full workload baseline remains open |
-| 3. Deployment | One-command deploy, dry-run, health checks, and rollback using external config | Local Debian/Nginx test container added; remote deployment is design only |
-| 4. Targeted implementation | Optimize measured bottlenecks; introduce Go/Rust components where justified | Initial frontend refresh/RPC fixes implemented; Rust polling gateway assessed and remains proposed |
+| 1. Project guidance | Shared agent rules, reusable prompts, and project docs | Complete: shared rules, neutral prompts and documentation index |
+| 2. Baseline | Core behavior inventory and reproducible synthetic performance workload | Complete for the current static app: inventory, workloads, commands, measurements and coverage limits in BASELINE.md/PERFORMANCE.md |
+| 3. Deployment | One-command deploy, dry-run, health checks, and rollback using external config | Complete for static Linux/SSH releases: Rust tooling and disposable end-to-end validation; no production rollout |
+| 4. Targeted implementation | Optimize measured bottlenecks; introduce Go/Rust components where justified | In progress: frontend/RPC fixes plus chart/history resource bounds implemented and measured; Rust gateway remains proposed |
 | 5. Load validation | Demonstrate improvements and recovery under agreed workloads | Awaiting targets and implementation |
 
 Baseline and deployment preparation may proceed independently where inputs are
 known. Server implementation requires a concrete use case and an architecture
 decision. Do not assume that both a Go and a Rust implementation are required.
 
-Open planning inputs include expected concurrency, task counts, update frequency,
-latency/resource budgets, hosting capabilities, and branding/customization scope.
+Preparation closure is scoped to [Baseline](BASELINE.md) and the implemented
+static [Deployment](DEPLOYMENT.md) contract. Long-duration/peer-load diagnosis,
+production sizing and later gateway packaging remain explicit stage 4/5 work.
+
+Open planning inputs include production concurrency, task counts, update frequency,
+latency/resource budgets and branding/customization scope. Initial hosting support
+is Linux over SSH; actual destinations and credentials remain external.
 Record generic requirements here; keep actual infrastructure details external.
 
 ## Optimization sequence (2026-11-11)
@@ -29,6 +34,14 @@ the reported periodic refresh freezes and disconnected status at roughly 20 or
 more tasks before treating large task counts as the cause.
 
 ### Next: diagnose connection stalls and finish client resource bounds
+
+PERF-02 started: an intercepted HTTP/WebSocket browser matrix now checks 20-25
+tasks, file counts and slow replies. This short synthetic run did not reproduce
+the freeze. Disposable aria2 checks also passed at 20 queued tasks and 25 tasks with
+four active transfers, including HTTP/WS disconnect/recovery and detail refresh.
+RPC-01 now bounds detail/peer cycles and recovers from temporary errors. Peer load,
+longer soak runs, synchronized upstream metrics and full diagnostics remain open.
+Commands, measurements and limitations are in [Performance](PERFORMANCE.md).
 
 1. Reproduce the symptom with disposable aria2 and synthetic workloads starting at
    20-25 tasks, then vary files per task, peers, active transfers, response sizes,
@@ -45,6 +58,12 @@ more tasks before treating large task counts as the cause.
    measure explicit chart updates in place of deep watches. Bound retained task
    histories as well as samples per history, with server-aware keys and eviction.
    Verify memory recovery after repeated navigation and server switches. See UI-01.
+
+UI-01 source work is implemented: removed resize/popover resources on destruction,
+replaced chart deep watches with reference/revision updates, and capped retained
+task histories at 32 within an opaque RPC-session namespace. Comparable checks
+found 20 retained resize handlers before versus zero after 20 destroy cycles,
+and 100 histories before versus 32 after. Timing and limits are in PERFORMANCE.md.
 
 ### Rust gateway: incremental replacement of browser data work
 

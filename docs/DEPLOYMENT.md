@@ -1,71 +1,109 @@
-# Deployment plan for this fork
+# Deployment
 
-Status: remote deployment is design guidance only.
-Local Debian/Nginx testing is available via [Docker Compose](DOCKER.md); remote
-deployment automation and rollback are not implemented.
+Stage 3 is complete for static releases to a Linux host over SSH. The Rust
+operator tool in `tools/deploy/` implements locked install/build, artifact
+validation, dry-run, transfer, atomic activation, content health checks and
+rollback. The disposable Debian/OpenSSH/Nginx integration test validates this
+contract. No production destination was contacted or selected.
 
-AriaNg builds to static files in `dist/`. Node.js is needed on the build machine;
-the destination needs an HTTP server for the standard build. The aria2 service
-and any authentication or reverse proxy are separate infrastructure.
+The operator can run on Windows or Linux with Rust 1.85+ (tested with 1.99.1),
+Node/npm, OpenSSH `ssh`/`scp` with SFTP support and `tar`. The destination requires
+a shell, GNU coreutils, tar, curl, SSH/SFTP access, and a pre-created, dedicated,
+empty release root owned by the deployment account. Its HTTP server must serve
+`<release_root>/current` and allow atomic symlink replacement on that filesystem.
+Hosting, TLS, browser authentication and aria2 remain operator-managed services.
 
-New or rewritten application server components must use Rust or Go according to
-the workload, following `AGENTS.md`. If introduced, deployment must package their
-release binaries alongside the frontend artifact as appropriate, manage their
-lifecycle, and coordinate compatible versions and rollback. The static-only
-workflow below describes the current application; extend it when server code is
-added. Keep server configuration external to both binaries and public assets.
+## Private configuration and commands
 
-## Intended operator workflow
+Supply a private UTF-8 key=value file outside the checkout (ignored `.local/` is
+a fallback). Blank lines and lines beginning `#` are permitted. Unknown/duplicate
+keys, missing values and invalid paths fail before destination contact.
 
-1. Configure a private destination outside the checkout, preferably using an SSH
-   alias and key managed by the operator's SSH agent. Keep actual addresses,
-   accounts, paths, and keys out of this repository.
-2. Run one deployment command with a private configuration path or external
-   environment values. It should install locked dependencies and build once.
-3. Preview the destination and intended changes with a dry-run option, without
-   printing credentials or private addresses into shared logs.
-4. Transfer only the built static artifact to a new release directory. Validate
-   all required inputs before contacting the destination; abort on build or
-   transfer failure. Verify SSH host keys using an externally managed known-hosts
-   file; never disable host verification for convenience.
-5. Check the uploaded release, switch the active release atomically where the
-   hosting system supports it, and verify HTTP availability. If verification
-   fails, restore the previous release and report failure.
-6. Keep the preceding release for an explicit rollback command. Limit cleanup to
-   verified release directories owned by this deployment; avoid broad remote
-   deletion or synchronization with `--delete` against a live web root.
+```text
+ssh_alias=<operator-managed-ssh-alias>
+release_root=/<dedicated-release-root>
+health_url=https://<public-origin>/<index-path>
+known_hosts=<absolute-private-known-hosts-file>
+ssh_config=<absolute-private-ssh-config-file>
+```
 
-The eventual interface should support deploy, dry-run, and rollback without
-editing source files for each server. Choose its implementation after confirming
-the destination OS, hosting method, and available transfer tools. Do not assume
-Docker, a particular web server, or GitHub Actions access to the server.
+Replace placeholders externally. SSH aliases allow letters, digits, dots, hyphens
+and underscores and must start with a letter/digit. The absolute Linux release
+root allows letters, digits, slashes, underscores and hyphens, with no empty,
+`.` or `..` components or trailing slash. Ancestor symlinks are rejected remotely.
+SSH configuration and known-hosts files must be absolute regular files. Configure
+the account, port and identity in that SSH config; use an SSH agent where possible.
+Host verification and batch mode are enforced. Never disable host-key checking.
+Health URLs support HTTP/HTTPS with a DNS or IPv4 host and optional valid TCP
+port; userinfo, fragments and whitespace are rejected before destination contact.
 
-## Configuration boundary
+From the repository root:
 
-Tracked files may contain generic deployment code, config schemas, and placeholder
-examples. Actual SSH identities, destination names/addresses, remote paths, health
-check URLs, and authentication belong in private external configuration. CI, if
-used, must receive these through its secret store and avoid logging them.
+```sh
+cargo run --release --locked --manifest-path tools/deploy/Cargo.toml -- dry-run --config <private-config>
+cargo run --release --locked --manifest-path tools/deploy/Cargo.toml -- deploy --config <private-config>
+cargo run --release --locked --manifest-path tools/deploy/Cargo.toml -- rollback --config <private-config>
+```
 
-An ignored `.local/` directory or `.env` file is a local fallback, not a guarantee
-against disclosure. Do not package it. Never copy `.git/`, private settings, SSH
-material, or the source checkout into the public artifact. Do not pass secrets to
-frontend bundling or publish private server inventories as runtime JSON.
+Dry-run validates local configuration, describes phases without destination
+values, and never contacts or modifies the destination. Normal deploy runs
+`npm ci --no-audit --no-fund` and `npm run build` once before remote modification.
+For an already reviewed/built artifact, append `--prebuilt <artifact-directory>`
+to deploy or dry-run; dry-run then validates that artifact too. Rollback does not
+install dependencies or rebuild. Tool output omits external command output and
+private configuration; failures report a phase, not raw SSH/backend errors.
 
-Browser connections necessarily expose their destination to the browser user.
-For hidden backend addresses or credentials, use an appropriately authenticated
-server-side proxy and a generic same-origin frontend endpoint. Browser-local RPC
-settings and exported AriaNg settings can also contain sensitive values; keep
-exports outside the repository.
+## Release lifecycle
 
-## Acceptance checks for deployment implementation
+The receiver initializes a version marker only inside an empty dedicated root.
+An exclusive lock covers preparation, transfer and activation; concurrent
+operations fail. Only approved static files are archived: index, license,
+standard icons/robots, scripts, styles, language text and fonts. Unexpected
+directories/files, symlinks, source maps and artifacts above 64 MiB are rejected.
+The remote also rejects archive traversal and non-file/directory entries.
+This structural validation does not detect a secret hardcoded in an approved
+source asset: source review remains required.
 
-- A clean checkout builds using the lockfile and produces the standard artifact.
-- Missing or invalid private configuration fails before any remote modification.
-- Dry-run does not modify the server or reveal private values in shared output.
-- Upload/build failures leave the active release intact.
-- Activation, health-check failure recovery, and explicit rollback are verified
-  against a disposable test destination before a production rollout.
-- The deployed artifact contains no private configuration or server-specific data.
-- The operator can deploy and roll back using documented commands with external
-  configuration, without changing tracked files.
+Releases occupy `releases/r-<unique-id>`; `current` and `previous` are validated
+relative symlinks to releases inside this root. Transfer/extraction happens before
+activation. A temporary symlink is renamed over `current` atomically. The health
+URL must return the active release's exact `index.html` content (no login page,
+HTML rewriting or stale proxy response). curl has a ten-second deadline and a
+2 MiB response bound. Failed activation health restores the prior active link,
+or removes the new link for an initial deployment. Explicit rollback health-checks
+the previous release and restores the starting link if that check fails.
+
+No releases are recursively deleted automatically. Keep enough disk space and
+remove old inactive releases through an operator-reviewed retention process.
+Failed uploads/extractions can leave inactive diagnostic files. Interrupted
+operations may leave `.deploy-lock`: inspect its owner and ensure no deployment
+is running before removing that specific stale lock privately. A normal transfer
+failure releases its own lock. Remote tool deadlines and SSH keepalive/connect
+timeouts bound ordinary failures; an interrupted operator cannot guarantee
+completion of remote cleanup. Do not run a second deployment to bypass a lock.
+
+## Verification and boundary
+
+```sh
+cargo fmt --manifest-path tools/deploy/Cargo.toml --check
+cargo clippy --locked --manifest-path tools/deploy/Cargo.toml --all-targets -- -D warnings
+cargo test --locked --manifest-path tools/deploy/Cargo.toml
+cargo build --release --locked --manifest-path tools/deploy/Cargo.toml
+cargo build --locked --manifest-path tools/deploy/Cargo.toml
+cargo test --locked --manifest-path tools/deploy/Cargo.toml -- --ignored --nocapture
+```
+
+The explicit ignored test builds a disposable Linux SSH/Nginx container, generates
+temporary keys under ignored `.local/`, pins the container's host key, and tears
+the container down. It checks unchanged destination after dry-run, A/B releases,
+atomic activation, explicit rollback, health failure recovery, private-file
+rejection, failed builds, untrusted host-key rejection, SFTP transfer failure and
+lock recovery, and the complete locked
+install/build/deploy command. Production access is neither needed nor authorized.
+
+The source checkout, `.git`, `node_modules` and private configuration are never
+uploaded. Build-time variables and browser-delivered files cannot conceal secrets.
+Browser RPC settings remain local. The proposed Rust gateway is not packaged by
+this static tool: gateway adoption must extend the contract for compatible binary
+versions, process lifecycle, private runtime config and gateway health/rollback
+under GATE-05. Stage 3 completion applies to the current static architecture.

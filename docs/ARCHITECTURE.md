@@ -29,7 +29,13 @@ does not select production hosting or authentication; see [Docker testing](DOCKE
 
 - New or rewritten application server components use Go or Rust according to
   workload and maintainability. Rust is requested for the proposed polling gateway;
-  no server runtime is implemented yet. Browser code and deployment glue use appropriate tools.
+  no server runtime is implemented yet. Browser code uses appropriate tools.
+- Static deployment now uses the dependency-free Rust operator in `tools/deploy/`,
+  with a small remote POSIX-shell helper. Rust follows the tooling policy and
+  keeps configuration/validation/deadlines in one portable binary; this is not
+  an application backend or a performance claim. Linux/SSH release roots, strict
+  host verification, artifact allowlisting, atomic activation and checked rollback
+  are the supported contract, validated against disposable Debian SSH/Nginx.
 - Rewrites are welcome if affected core functionality is preserved and settings
   or user data have a migration path when needed. Preserve upstream attribution.
 - Keep service boundaries simple. Add a backend for a concrete requirement;
@@ -66,6 +72,22 @@ Current code findings and initial fixes:
   counting no longer expands bitmaps into temporary boolean arrays.
 - `views/list.html` now identifies rows by GID within the selected server's list,
   allowing Angular to retain DOM rows when full snapshots replace task objects.
+- Detail refresh now holds one request guard across the initial status and peer
+  requests, and later combined refreshes. Destroyed routes ignore late replies;
+  file selection pauses updates. Temporary errors resume on later polling ticks;
+  authorization errors stop the timer. Task-service response checks reject empty,
+  wrong-GID or malformed task results and non-array peer results before processing.
+  A failed peer subresult preserves valid task data and the previous peer display.
+  This does not add transport cancellation, retry backoff or mutation replay.
+- UI-01 charts consume a data reference/revision instead of deep-watching samples.
+  Monitor writes increment the revision. Chart destruction detaches resize handlers;
+  popover destruction removes handlers, plugin resources and its chart. Monitor
+  storage retains at most 32 task histories plus global history, with least-recently
+  used task eviction and existing 300/120 sample limits. A page-lifetime opaque
+  RPC-session namespace separates histories without embedding destinations or
+  credentials; existing profile switches reload the page. Histories are volatile,
+  so this needs no saved-settings migration. The bound is a client retention policy,
+  not a workload capacity claim.
 
 The current list still filters/sorts in Angular digests and renders all matching
 rows. A backend alone cannot remove DOM/digest cost. Bounded rendering needs a

@@ -24,6 +24,7 @@
 | Complete Docker integration suite with Edge | `python tests/run_docker.py --browser --channel msedge` |
 | HTTP smoke checks against local container | `python tests/docker_smoke.py` |
 | UI smoke checks with Playwright and Edge installed | `python tests/docker_smoke.py --browser --channel msedge` |
+| UI smoke checks using optional JS Playwright/Edge tooling | `node tests/browser-smoke.cjs` |
 
 See [Docker testing](DOCKER.md) for container configuration and shutdown commands.
 
@@ -47,6 +48,8 @@ Frontend regression checks and synthetic processing comparisons:
 ```sh
 node tests/performance/task-processing.cjs 4d0ee89
 node tests/performance/websocket-recovery.cjs
+node tests/performance/detail-refresh.cjs
+node tests/performance/chart-resources.cjs
 ```
 
 The first command reads the named baseline revision with Git; omit the argument
@@ -57,14 +60,44 @@ and optional JS Playwright tooling installed outside the application dependencie
 npm install --prefix .local/browser-tools --no-package-lock --no-audit --no-fund playwright
 node tests/performance/list-browser.cjs
 node tests/performance/rpc-browser.cjs
+node tests/performance/stall-browser.cjs
 ```
 
 These scripts exercise browser JavaScript and use Node tooling; they introduce
 no Python dependency. See [Performance](PERFORMANCE.md) for workloads and limits.
+The stall diagnostic needs only the served frontend and optional Playwright/Edge;
+it intercepts every RPC request and reads no local credentials. It emits aggregate
+JSON lines and fails on stalled updates, overlapping list polls, unsupported
+fixture methods, incorrect row counts, or uncaught browser errors.
+
+For real disposable aria2 load and browser disconnect/recovery checks:
+
+```sh
+node tests/performance/live-stall-browser.cjs
+```
+
+This requires healthy local Compose services, the ignored fixture token and
+Playwright/Edge. It refuses existing active/waiting tasks, creates 20 then 25
+single-file tasks, starts four rate-limited transfers, checks both transports and
+detail routes, and removes its own task records in cleanup. It does not change
+global aria2 options. Partial downloads remain in disposable container storage;
+recreating aria2 discards them. Run fixture-mutating suites sequentially.
+
+`detail-refresh.cjs` loads actual Angular controller/service code with simulated
+browser dependencies. It checks slow task/peer cycles, transport settlement,
+temporary failures, malformed task/peer replies, file editing and route cleanup.
+Its baseline comparison reads the detail controller from HEAD.
+
+`chart-resources.cjs` compares HEAD and working-tree chart/monitor sources in
+isolated Angular modules with real ECharts. It checks history/sample bounds,
+fresh chart values, handler/popover disposal and RPC namespace reset. The Python
+browser runner requires its own Python Playwright package; when unavailable, the
+JS browser smoke command covers the same routes/theme/language/mobile checks
+using the optional JS tooling above. No new Python dependency is needed.
 
 ## Future server components
 
-No Go module, Cargo workspace, or server toolchain is selected yet. Document the
+No Go module, Cargo workspace, or application server toolchain is selected yet. Document the
 chosen version, supported platform, source layout, and exact commands here when
 introducing one. Follow language-native formatting (gofmt or rustfmt); JavaScript
 formatting conventions do not override them. Maintain generated dependency locks.
@@ -74,3 +107,11 @@ race detector where supported, and a build for the intended deployment target.
 For Rust, include formatting, Clippy, tests, and locked release builds for supported
 features/targets. Record actual module/workspace commands once they exist; these
 are verification expectations, not commands that work in the current repository.
+
+## Rust operator tooling
+
+`tools/deploy/` is a dependency-free Rust 2024 crate (minimum Rust 1.85, tested
+with 1.99.1). Its lockfile is tracked; `target/` is ignored. This is build/deploy
+tooling, not an application backend. Commands, private config schema and disposable
+SSH integration checks are in DEPLOYMENT.md. Browser JavaScript checks continue
+using Node/Playwright rather than introducing Rust browser bindings.

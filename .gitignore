@@ -152,3 +152,6 @@ id_ed25519
 # Python test runner caches
 __pycache__/
 *.pyc
+
+# Rust build artifacts
+target/

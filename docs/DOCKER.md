@@ -100,6 +100,11 @@ environment and a local Edge installation:
 python tests/docker_smoke.py --browser --channel msedge
 ```
 
+Alternatively, with the optional JavaScript Playwright installation described
+in DEVELOPMENT.md, run `node tests/browser-smoke.cjs` for the same six-route,
+theme/language persistence, translation, mobile and runtime/asset checks. This
+does not require the Python Playwright package.
+
 Chrome can be selected with `--channel chrome`. Tests use a new browser context
 and block outbound RPC traffic; no existing browser profile or credentials are
 used. Browser checks cover six routes, light/dark themes, persisted theme and

@@ -22,6 +22,8 @@
         ];
         var downloadTaskRefreshPromise = null;
         var pauseDownloadTaskRefresh = false;
+        var requestInFlight = null;
+        var destroyed = false;
         var currentRowTriggeredMenu = null;
 
         var getVisibleTabOrders = function () {
@@ -116,21 +118,38 @@
         };
 
         var refreshDownloadTask = function (silent) {
-            if (pauseDownloadTaskRefresh) {
+            if (pauseDownloadTaskRefresh || requestInFlight || destroyed) {
                 return;
             }
 
-            var processError = function (message) {
-                $interval.cancel(downloadTaskRefreshPromise);
+            var request = {};
+            requestInFlight = request;
+            var peerPromise = null;
+            var releaseRequest = function () {
+                if (requestInFlight === request) {
+                    requestInFlight = null;
+                }
+            };
+            var canUpdate = function () {
+                return !destroyed && !pauseDownloadTaskRefresh;
+            };
+            var processError = function (error) {
+                if (error && error.message === aria2RpcErrors.Unauthorized.message) {
+                    $interval.cancel(downloadTaskRefreshPromise);
+                }
             };
 
             var includeLocalPeer = true;
             var addVirtualFileNode = true;
 
+            var promise;
             if (!$scope.task) {
-                return aria2TaskService.getTaskStatus($routeParams.gid, function (response) {
+                promise = aria2TaskService.getTaskStatus($routeParams.gid, function (response) {
+                    if (!canUpdate()) {
+                        return;
+                    }
                     if (!response.success) {
-                        return processError(response.data.message);
+                        return processError(response.data);
                     }
 
                     var task = response.data;
@@ -138,23 +157,40 @@
                     processTask(task);
 
                     if (requireBtPeers(task)) {
-                        aria2TaskService.getBtTaskPeers(task, function (response) {
+                        peerPromise = aria2TaskService.getBtTaskPeers(task, function (response) {
+                            if (!canUpdate()) {
+                                return;
+                            }
                             if (response.success) {
                                 processPeers(response.data);
+                            } else {
+                                processError(response.data);
                             }
                         }, silent, includeLocalPeer);
                     }
                 }, silent, addVirtualFileNode);
             } else {
-                return aria2TaskService.getTaskStatusAndBtPeers($routeParams.gid, function (response) {
+                promise = aria2TaskService.getTaskStatusAndBtPeers($routeParams.gid, function (response) {
+                    if (!canUpdate()) {
+                        return;
+                    }
                     if (!response.success) {
-                        return processError(response.data.message);
+                        return processError(response.data);
                     }
 
                     processTask(response.task);
                     processPeers(response.peers);
                 }, silent, requireBtPeers($scope.task), includeLocalPeer, addVirtualFileNode);
             }
+
+            // The initial task reply can start a second request for peers. Hold
+            // the guard through both transports, including settlement without
+            // a callback (for example an empty HTTP response).
+            var cycle = promise.then(function () {
+                return peerPromise;
+            });
+            cycle.then(releaseRequest, releaseRequest);
+            return cycle;
         };
 
         var setSelectFiles = function (silent) {
@@ -726,6 +762,7 @@
         }
 
         $scope.$on('$destroy', function () {
+            destroyed = true;
             if (downloadTaskRefreshPromise) {
                 $interval.cancel(downloadTaskRefreshPromise);
             }

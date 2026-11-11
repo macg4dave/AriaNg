@@ -87,3 +87,157 @@ When measurements exist, record the task ID, revision, exact commands, sanitized
 environment description, workload, duration/repetitions, before/after results,
 and limitations here or in linked reports. Do not infer capacity from language
 choice or present unmeasured improvements as facts.
+
+### PERF-02: first stall diagnostic matrix (2026-11-11; partial)
+
+Revision: frontend at `0697bea`, plus the new working-tree diagnostic. Windows
+x64, Node 26.13.0, headless Edge 157.0.4341.46, existing local Docker static UI.
+Run `node tests/performance/stall-browser.cjs` after starting the local web
+service and installing the optional browser tooling described in DEVELOPMENT.md.
+No application behavior changed in this increment; these are baseline observations.
+
+One fresh browser context per case, one client, one-second list/global polling,
+20 or 25 active synthetic task records, 1 or 100 files/task. RPC is intercepted
+with successful JSON-RPC fixtures; there are no real transfers or peers. Initial
+full data respects requested keys, followed by basic replies. Each reply advances
+completed length, and an Angular watcher verifies four observed values per case.
+Each case takes roughly 3-8 seconds; one matrix run is recorded below.
+
+| Transport | Tasks | Files/task | Delay ms | Fixture reply p95 ms | Digest p95 ms | Maximum update gap ms | Response bytes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| HTTP | 20 | 1 | 0 | 15.4 | 2.0 | 1011.1 | 15826 |
+| HTTP | 25 | 1 | 0 | 14.7 | 1.4 | 1010.7 | 19497 |
+| HTTP | 25 | 100 | 0 | 13.7 | 1.8 | 1013.5 | 312636 |
+| HTTP | 25 | 100 | 1500 | 1516.2 | 5.0 | 2017.3 | 312636 |
+| WebSocket | 20 | 1 | 0 | 2.6 | 6.5 | 1002.3 | 15818 |
+| WebSocket | 25 | 1 | 0 | 14.4 | 7.5 | 1014.2 | 19513 |
+| WebSocket | 25 | 100 | 0 | 14.7 | 6.9 | 1000.3 | 312640 |
+| WebSocket | 25 | 100 | 1500 | 1518.7 | 6.4 | 2016.6 | 312636 |
+
+All cases observed four fresh list values, maximum one list request in flight,
+zero uncaught browser errors and zero observed browser long tasks (50 ms or more).
+Animation-frame gap p95 stayed about 16.8 ms; maximum gap was 33.3 ms. The slow
+reply cases updated about every two seconds because timer ticks skip outstanding
+requests. That is reduced freshness without an observed browser freeze here.
+
+The reply metric measures fixture request receipt through serialization/send,
+including injected delay, not end-to-end RPC or upstream latency. Bytes count
+JSON response bodies across all completed RPC methods, excluding wire framing;
+timer scheduling and generated IDs can cause small differences. Digest timing
+uses an instrumented root digest after Angular startup; frame gaps approximate
+scheduling responsiveness, not paint completion. Four replies provide very few
+latency samples, so p95 is effectively their maximum. Instrumentation adds work.
+Do not infer transport superiority or production capacity from these timings.
+
+The reported periodic freeze/disconnection was not reproduced in this short
+success-only fixture. PERF-02 remains open: real disposable aria2 workloads with
+active transfers, file/peer variation, HTTP/WS failures/timeouts, upstream resource
+measurements, longer observation and explicit connection-state diagnostics are
+still required. No private configuration was read. Existing WebSocket recovery
+checks also passed; no new production fix or performance improvement is claimed.
+
+### PERF-02 live fixture and RPC-01 detail bounds (2026-11-11; partial)
+
+Frontend baseline `0697bea`; working-tree detail changes compared with HEAD by
+`node tests/performance/detail-refresh.cjs`. Same Windows/Node/Edge environment
+as above; Debian Compose aria2 with its existing four-transfer concurrency limit.
+Commands:
+
+```sh
+node tests/performance/detail-refresh.cjs
+node tests/performance/task-processing.cjs
+node tests/performance/websocket-recovery.cjs
+npm run build
+docker compose up --build -d --wait web
+node tests/performance/live-stall-browser.cjs
+```
+
+The deterministic detail check produced 21 requests before versus one after
+across 20 timer ticks while status was outstanding. The updated guard also holds
+through the initial peer fetch. Checks passed for transient errors, rejected
+transport/timeout, settlement without callback, authorization failure, file
+editing, destroyed routes, malformed/empty/wrong-GID task results, invalid peer
+results and a peer fault alongside valid task data. These use actual browser
+controller/service code with simulated dependencies; they are not timing or
+memory benchmarks. Temporary failures now resume on subsequent configured ticks
+instead of permanently cancelling detail polling. Authorization still stops it.
+
+The live runner uses one isolated browser client at a time, one-second polling,
+20 paused single-file HTTP tasks, then 25 total tasks with four active transfers
+limited to 1 KiB/s each and 21 paused. Each transfer uses the local 64 KiB fixture;
+there are no BitTorrent peers. Four list replies are measured per case. It then
+interrupts browser traffic (HTTP aborts or WebSocket close), observes Disconnected,
+restores HTTP traffic or explicitly reconnects WebSocket, verifies list recovery,
+and navigates directly to a paused task detail route for two combined refreshes.
+
+| Transport | Total / active tasks | RPC p95 / p99 ms | Baseline response bytes |
+| --- | --- | --- | --- |
+| HTTP | 20 / 0 | 7.14 / 7.14 | 16402 |
+| WebSocket | 20 / 0 | 4.09 / 4.09 | 16402 |
+| HTTP | 25 / 4 | 3.90 / 3.90 | 17187 |
+| WebSocket | 25 / 4 | 2.31 / 2.31 | 17186 |
+
+All four cases passed disconnect/recovery and detail refresh with no uncaught
+browser errors or observed long tasks. Frame-gap p95 was about 16.8 ms; maximum
+was 50 ms. HTTP cases aborted two and one requests respectively; WebSocket cases
+each closed a connection without injecting an RPC error. Response bytes count
+JSON bodies for all measured methods, not wire framing. RPC latency is measured
+at the Playwright interception boundary from request receipt to upstream reply;
+it excludes browser decode/digest, and HTTP interception adds overhead. Samples
+are few (p95/p99 effectively the maximum), cases last seconds, and these numbers
+do not establish transport superiority or capacity. A pointer click did not finish
+in a preliminary WebSocket run; direct route navigation is the checked workflow,
+and modal/pointer interaction remains unverified.
+
+The reported freeze was not reproduced. This only exercises small HTTP files and
+the waiting-list/detail routes. Larger file inventories, real BitTorrent peers,
+active-list rendering, prolonged runs, explicit server switches, slow/malformed
+wire replies and synchronized upstream CPU/memory still need coverage. Docker
+resource spot checks were unsynchronized and are not a load-resource baseline.
+Task records were removed; partial files remain disposable. No production values
+were used. Standard build and existing task/WebSocket regressions passed. Direct
+ESLint comparison on normalized LF found no added findings in the two changed
+source files (55 to 54 total); inherited lint issues remain.
+
+### UI-01 chart/history resources (2026-11-11)
+
+Baseline: chart and monitor sources at `0697bea`; updated: working-tree sources.
+Command: `node tests/performance/chart-resources.cjs`. Windows x64, Node 26.13.0,
+headless Edge 157.0.4341.46, served local UI and actual Angular/ECharts libraries.
+The harness registers isolated Angular modules from both source versions, without
+RPC access or private settings. No saved data or settings format changes.
+
+Workload: 100 distinct synthetic task histories; a 300-sample chart after 500
+writes; 20 compile/destroy cycles; one shown/destroyed popover; a synthetic RPC
+namespace change; five repetitions of 500 quiet digests on one chart. Median
+elapsed time for those digest batches is reported, not per-refresh latency.
+
+| Measurement | Before | After |
+| --- | --- | --- |
+| Retained task histories after 100 distinct keys | 100 | 32 |
+| Retained resize handlers after 20 chart destroy cycles | 20 | 0 |
+| Popover resources removed on scope destruction | No | Yes |
+| Histories/global stat isolated after namespace change | No | Yes |
+| Median time for 500 quiet chart digests | 3.7 ms | 0.6 ms |
+
+Fresh samples still update the actual chart; the 300-sample task capacity remains.
+Charts now watch data reference/revision instead of deep comparisons. A monitor
+write increments the revision; initial popover display also applies current data.
+The chosen 32-history LRU bound is a volatile client retention policy, not an
+agreed capacity target. Global history remains separate with its 120-sample limit.
+The opaque namespace follows the page-lifetime RPC context; real profile switches
+reload the page. No destinations or credentials enter history keys.
+
+These are short isolated chart/resource checks, not whole-app heap, paint or
+network measurements. The harness observes handler/history ownership and chart
+disposal, not reclaimed heap bytes; extended memory/peer-load soak remains stage 5
+work. Network/RPC frequency and bytes are unchanged by this change. No server
+throughput or production freeze fix is claimed. Rust deployment validation is
+functional tooling evidence in DEPLOYMENT.md, not an application performance result.
+
+The standard and all-in-one builds also passed, along with HTTP smoke, the JS
+six-route/theme/language/mobile smoke and existing detail/task/WebSocket checks.
+Direct ESLint analysis of the four UI-01 source files found the same inherited
+rule counts as HEAD after LF normalization; no new findings were introduced.
+The Python browser smoke entry point could not run because its Playwright package
+is absent; the equivalent JS smoke passed using the installed optional tooling.

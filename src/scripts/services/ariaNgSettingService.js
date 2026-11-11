@@ -20,6 +20,10 @@
 
         var onFirstVisitCallbacks = [];
         var firstVisitCallbackFired = false;
+        // RPC transports bind to the selected profile for this page lifetime.
+        // Profile switches reload the page; this opaque namespace contains no
+        // destination or credential material and is never persisted.
+        var rpcSessionId = ariaNgCommonService.generateUniqueId();
         var sessionSettings = {
             debugMode: false
         };
@@ -488,6 +492,9 @@
                 }
 
                 return options.rpcHost + ':' + options.rpcPort;
+            },
+            getCurrentRpcSessionId: function () {
+                return rpcSessionId;
             },
             getCurrentRpcUrl: function () {
                 var options = getOptions();

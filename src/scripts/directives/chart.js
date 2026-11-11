@@ -27,18 +27,20 @@
                     chart.setOption(value);
                 };
 
-                angular.element($window).on('resize', function () {
+                var onResize = function () {
                     chart.resize();
-                    scope.$apply();
-                });
+                };
+                angular.element($window).on('resize', onResize);
 
-                scope.$watch('options', function (value) {
+                scope.$watchGroup(['options', 'options.revision'], function () {
+                    var value = scope.options;
                     if (value) {
                         setOptions(value);
                     }
-                }, true);
+                });
 
                 scope.$on('$destroy', function() {
+                    angular.element($window).off('resize', onResize);
                     if (chart && !chart.isDisposed()) {
                         chart.dispose();
                     }
@@ -72,8 +74,8 @@
                     placement: options.ngPlacement,
                     template: '<div class="popover chart-popover" role="tooltip"><div class="arrow"></div><div class="popover-content"></div></div>',
                     trigger: options.ngTrigger
-                }).on('shown.bs.popover', function () {
-                    var wrapper = angular.element('.chart-pop');
+                }).on('shown.bs.popover.ariaNgChart', function () {
+                    var wrapper = element.data('bs.popover').tip().find('.chart-pop');
                     var wrapperParent = wrapper.parent();
                     var parentHeight = wrapperParent.height();
 
@@ -83,12 +85,16 @@
                     wrapper.css('height', height + 'px');
 
                     chart = echarts.init(wrapper[0], chartTheme.get(scope.theme));
-                }).on('hide.bs.popover', function () {
+                    if (scope.options) {
+                        chart.setOption(scope.options);
+                    }
+                }).on('hide.bs.popover.ariaNgChart', function () {
                     if (chart && !chart.isDisposed()) {
                         chart.dispose();
                     }
-                }).on('hidden.bs.popover', function () {
-                    angular.element('.chart-pop').empty().append(loadingIcon);
+                    chart = null;
+                }).on('hidden.bs.popover.ariaNgChart', function () {
+                    element.data('bs.popover').tip().find('.chart-pop').empty().append(loadingIcon);
                 });
 
                 var setOptions = function (value) {
@@ -97,11 +103,21 @@
                     }
                 };
 
-                scope.$watch('options', function (value) {
+                scope.$watchGroup(['options', 'options.revision'], function () {
+                    var value = scope.options;
                     if (value) {
                         setOptions(value);
                     }
-                }, true);
+                });
+
+                scope.$on('$destroy', function () {
+                    element.off('.ariaNgChart');
+                    if (chart && !chart.isDisposed()) {
+                        chart.dispose();
+                    }
+                    chart = null;
+                    element.popover('destroy');
+                });
             }
         };
     }]).factory('chartTheme', ['chartDefaultTheme', 'chartDarkTheme', function (chartDefaultTheme, chartDarkTheme) {

@@ -1,10 +1,35 @@
 (function () {
     'use strict';
 
-    angular.module('ariaNg').factory('ariaNgMonitorService', ['$filter', 'ariaNgConstants', 'ariaNgCommonService', 'ariaNgLocalizationService', function ($filter, ariaNgConstants, ariaNgCommonService, ariaNgLocalizationService) {
+    angular.module('ariaNg').factory('ariaNgMonitorService', ['$filter', 'ariaNgConstants', 'ariaNgCommonService', 'ariaNgLocalizationService', 'ariaNgSettingService', function ($filter, ariaNgConstants, ariaNgCommonService, ariaNgLocalizationService, ariaNgSettingService) {
         var currentGlobalStat = {};
-        var storagesInMemory = {};
+        var storagesInMemory = Object.create(null);
+        var taskHistoryKeys = [];
+        var serverScope = null;
         var globalStorageKey = 'global';
+
+        var ensureServerScope = function () {
+            var scope = ariaNgSettingService.getCurrentRpcSessionId();
+            if (scope !== serverScope) {
+                storagesInMemory = Object.create(null);
+                taskHistoryKeys = [];
+                currentGlobalStat = {};
+                serverScope = scope;
+            }
+        };
+
+        var touchStorage = function (key) {
+            if (key === globalStorageKey) {
+                return;
+            }
+            var index = taskHistoryKeys.indexOf(key);
+            if (index >= 0) {
+                taskHistoryKeys.splice(index, 1);
+            } else if (taskHistoryKeys.length >= ariaNgConstants.taskStatHistoryCapacity) {
+                delete storagesInMemory[taskHistoryKeys.shift()];
+            }
+            taskHistoryKeys.push(key);
+        };
 
         var getStorageCapacity = function (key) {
             if (key === globalStorageKey) {
@@ -16,6 +41,7 @@
 
         var initStorage = function (key) {
             var data = {
+                revision: 0,
                 legend: {
                     show: false
                 },
@@ -116,6 +142,7 @@
             timeData.push(stat.time);
             uploadData.push(stat.uploadSpeed);
             downloadData.push(stat.downloadSpeed);
+            storage.revision++;
         };
 
         var getStorage = function (key) {
@@ -128,6 +155,8 @@
 
         return {
             recordStat: function (key, stat) {
+                ensureServerScope();
+                touchStorage(key);
                 if (!isStorageExist(key)) {
                     initStorage(key);
                 }
@@ -136,6 +165,8 @@
                 pushToStorage(key, stat);
             },
             getStatsData: function (key) {
+                ensureServerScope();
+                touchStorage(key);
                 if (!isStorageExist(key)) {
                     initStorage(key);
                 }
@@ -143,6 +174,7 @@
                 return getStorage(key);
             },
             getEmptyStatsData: function (key) {
+                ensureServerScope();
                 if (isStorageExist(key)) {
                     removeStorage(key);
                 }
@@ -157,6 +189,7 @@
                 return this.getStatsData(globalStorageKey);
             },
             getCurrentGlobalStat: function () {
+                ensureServerScope();
                 return currentGlobalStat;
             }
         };

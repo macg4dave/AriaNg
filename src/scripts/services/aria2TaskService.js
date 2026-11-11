@@ -525,6 +525,11 @@
                             return;
                         }
 
+                        if (response.success && (!response.data || response.data.gid !== gid || !response.data.status)) {
+                            response.success = false;
+                            response.data = {};
+                        }
+
                         if (response.success) {
                             processDownloadTask(response.data, addVirtualFileNode);
                         }
@@ -574,6 +579,11 @@
                             return;
                         }
 
+                        if (response.success && !angular.isArray(response.data)) {
+                            response.success = false;
+                            response.data = {};
+                        }
+
                         if (response.success) {
                             processBtPeers(response.data, task, includeLocalPeer);
                         }
@@ -600,15 +610,20 @@
                             return;
                         }
 
-                        response.task = {};
+                        var results = response.data;
+                        var taskResult = angular.isArray(results) && angular.isArray(results[0]) ? results[0][0] : null;
+                        if (response.success && (!taskResult || taskResult.gid !== gid || !taskResult.status)) {
+                            response.success = false;
+                            response.data = angular.isArray(results) && results[0] && results[0].message ? results[0] : {};
+                        }
 
-                        if (response.success && response.data.length > 0) {
-                            response.task = response.data[0][0];
+                        if (response.success) {
+                            response.task = taskResult;
                             processDownloadTask(response.task, addVirtualFileNode);
                         }
 
-                        if (response.success && response.task.bittorrent && response.data.length > 1) {
-                            response.peers = response.data[1][0];
+                        if (response.success && response.task.bittorrent && angular.isArray(results[1]) && angular.isArray(results[1][0])) {
+                            response.peers = results[1][0];
                             processBtPeers(response.peers, response.task, includeLocalPeer);
                         }
 
