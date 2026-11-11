@@ -16,6 +16,8 @@ use tokio::{
     time::{Instant, timeout},
 };
 
+mod tasks;
+
 const MAX_BODY: usize = 2 * 1024 * 1024;
 const MAX_SLOTS: usize = 8;
 const FRESH: Duration = Duration::from_secs(1);
@@ -26,6 +28,8 @@ const DEADLINE: Duration = Duration::from_secs(10);
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub listen: SocketAddr,
+    #[serde(default)]
+    pub allow_network_listener: bool,
     pub browser_origin: String,
     pub servers: Vec<ServerConfig>,
 }
@@ -90,7 +94,7 @@ pub struct Gateway {
 
 impl Gateway {
     pub fn new(config: Config) -> Result<Arc<Self>, &'static str> {
-        if !config.listen.ip().is_loopback()
+        if (!config.listen.ip().is_loopback() && !config.allow_network_listener)
             || config.servers.is_empty()
             || config.servers.len() > 16
         {
@@ -236,6 +240,13 @@ impl Gateway {
         method: &str,
         mut params: Vec<Value>,
     ) -> Result<Value, Fault> {
+        let summary_source = tasks::source(method);
+        let method = if let Some(source) = summary_source {
+            params = tasks::upstream_params(source);
+            source
+        } else {
+            method
+        };
         if method.starts_with("aria2.") {
             params.insert(
                 0,
@@ -267,7 +278,15 @@ impl Gateway {
             // Do not expose raw upstream messages, paths or credentials.
             return Err(Fault(StatusCode::BAD_GATEWAY, -32002, "RPC request failed"));
         }
-        value.get_mut("result").map(Value::take).ok_or(UNAVAILABLE)
+        let result = value
+            .get_mut("result")
+            .map(Value::take)
+            .ok_or(UNAVAILABLE)?;
+        if summary_source.is_some() {
+            tasks::compact(result)
+        } else {
+            Ok(result)
+        }
     }
 
     async fn call(
@@ -325,14 +344,16 @@ impl Gateway {
 }
 
 fn cacheable(method: &str) -> bool {
-    matches!(
-        method,
-        "aria2.tellActive" | "aria2.tellWaiting" | "aria2.tellStopped" | "aria2.getGlobalStat"
-    )
+    tasks::source(method).is_some()
+        || matches!(
+            method,
+            "aria2.tellActive" | "aria2.tellWaiting" | "aria2.tellStopped" | "aria2.getGlobalStat"
+        )
 }
 
 fn read_only(method: &str) -> bool {
-    cacheable(method)
+    (cacheable(method) && tasks::source(method).is_none())
+        || method == "gateway.listTasks"
         || matches!(
             method,
             "aria2.tellStatus"
@@ -469,7 +490,7 @@ async fn rpc(
             let mut length = 0;
             let mut age = 0;
             for (method, params) in parsed {
-                let result = match gateway.call(scope, method, params).await {
+                let result = match gateway.dispatch(scope, method, params).await {
                     Ok((value, snapshot_age)) => {
                         age = age.max(snapshot_age);
                         json!([value])
@@ -485,7 +506,7 @@ async fn rpc(
             (Arc::new(Value::Array(results)), age)
         } else {
             validate_call(method, &params)?;
-            match gateway.call(scope, method, params).await {
+            match gateway.dispatch(scope, method, params).await {
                 Ok(result) => result,
                 Err(error) => return Ok(error.response(id)),
             }

@@ -338,7 +338,10 @@
                 task.verifiedPercent = undefined;
             }
 
-            var taskNameResult = getTaskName(task);
+            var taskNameResult = task.compactSummary ? {
+                name: task.taskName || ariaNgLocalizationService.getLocalizedText('Unknown'),
+                success: !!task.taskName
+            } : getTaskName(task);
             task.taskName = taskNameResult.name;
             task.hasTaskName = taskNameResult.success;
 
@@ -488,6 +491,39 @@
         };
 
         return {
+            getTaskPage: function (query, callback, silent) {
+                return aria2RpcService.listTasks({
+                    query: query,
+                    silent: !!silent,
+                    callback: function (response) {
+                        if (response.success) {
+                            var page = response.data;
+                            if (!page || !angular.isArray(page.tasks) || !angular.isNumber(page.total) ||
+                                    page.total < 0 || page.total > 1000 || page.total % 1 !== 0 ||
+                                    !angular.isString(page.snapshot) || page.snapshot.length !== 64 ||
+                                    page.offset !== query.offset || page.tasks.length > query.limit) {
+                                response.success = false;
+                                response.data = { message: 'Cannot connect to aria2!' };
+                            } else {
+                                var seen = {};
+                                for (var i = 0; i < page.tasks.length; i++) {
+                                    var task = page.tasks[i];
+                                    if (!task || !angular.isString(task.gid) || !/^[0-9a-f]{16}$/i.test(task.gid) ||
+                                            seen[task.gid] || !angular.isString(task.status)) {
+                                        response.success = false;
+                                        response.data = { message: 'Cannot connect to aria2!' };
+                                        break;
+                                    }
+                                    seen[task.gid] = true;
+                                    task.compactSummary = true;
+                                    processDownloadTask(task, false, true);
+                                }
+                            }
+                        }
+                        callback(response);
+                    }
+                });
+            },
             getTaskList: function (type, full, callback, silent) {
                 var invokeMethod = null;
 

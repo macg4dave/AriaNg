@@ -50,12 +50,43 @@ against disposable Compose aria2 with two browser contexts, waiting/detail/mobil
 views, multicall, task option changes and unauthorized access. It bridges the
 same-origin browser route to the actual gateway HTTP listener, substituting for a
 production proxy. It removes its paused fixture task. No private production config
-was read. Source startup, limits and remaining GATE-03/04/05 work are in GATEWAY.md.
+was read.
 
 Still unmeasured: isolated upstream/gateway CPU/RSS, long peer/transfer soaks,
 slow-reader transport buffers, Linux runtime behavior, representative production
 inventories/users, and browser responsiveness/network effects with the gateway.
-No compact summaries or backend sorting/pagination are implemented in this stage.
+That initial measurement predates the compact query implementation below.
+
+### Compact query backend (2026-11-11)
+
+The same release load command now also measures `gateway.listTasks` with all 25
+summaries per response, retaining the preceding workload's 20 clients, 100 files
+per task, five one-second rounds and 100 requests per phase. The fixture now
+includes explicit download/upload speeds, required by summary validation.
+
+| Metric | Direct | Compatible gateway | Compact query |
+| --- | --- | --- | --- |
+| Upstream requests during phase | 100 | 3 | 5 |
+| Errors | 0 | 0 | 0 |
+| p95 / p99 ms | 18.503 / 19.059 | 13.037 / 13.775 | 8.463 / 8.754 |
+| Logical requests/s | 24.781 | 24.899 | 24.957 |
+| Response bytes | 29,456,800 | 29,456,800 | 526,200 |
+| Combined process CPU ms | 343.750 | 78.125 | 62.500 |
+| End-of-phase working set bytes | 27,217,920 | 37,675,008 | 38,494,208 |
+
+Compact delivery reduced response bytes by about 98.2% in this fixed synthetic
+inventory; this does not measure frontend rendering. The prior full-list slot
+remains observed during the compact phase's 30-second retention period, so its
+background refreshes are included in compact-phase upstream counts and CPU.
+All earlier single-run, phase-order, finite-interval and combined-process resource
+limitations apply. These results do not establish production capacity.
+
+Seventeen Rust tests pass, including query bounds, pre-pagination filtering/sort,
+shared query snapshots, stale-revision rejection, summary name derivation,
+malformed/oversized inventories and retained compatibility checks. The explicit
+browser/real-aria2 test also checks compact waiting summaries and revision reuse.
+At that measurement stage the frontend did not request compact pages. The browser
+integration described below now does so for explicitly configured gateway profiles.
 
 ## Status
 
@@ -298,3 +329,107 @@ Direct ESLint analysis of the four UI-01 source files found the same inherited
 rule counts as HEAD after LF normalization; no new findings were introduced.
 The Python browser smoke entry point could not run because its Playwright package
 is absent; the equivalent JS smoke passed using the installed optional tooling.
+
+### Build and verification rerun (2026-11-11)
+
+Working tree based on `8248fce`; Windows x64, Node 26.13.0, Rust 1.99.1,
+Edge 157.0.4341.46. Standard `npm run build` and locked Rust gateway release
+build passed, as did rustfmt, Clippy with warnings denied and all 17 Rust tests.
+`docker compose up --build -d --wait` rebuilt the Debian preview successfully.
+Browser smoke, list rendering, HTTP/WebSocket RPC, chart resources and the explicit
+Rust `--test live -- --ignored --nocapture` real-aria2 integration check passed.
+Task processing, WebSocket recovery and detail-refresh Node checks also passed.
+
+`node tests/performance/task-processing.cjs 4d0ee89` (same synthetic workload
+as the initial comparison) returned baseline/current median and p95 milliseconds:
+
+| Tasks | Files/task | Baseline median / p95 | Current median / p95 |
+| --- | --- | --- | --- |
+| 1,000 | 1 | 2.004 / 2.719 | 0.937 / 1.320 |
+| 1,000 | 100 | 29.861 / 32.849 | 0.853 / 1.022 |
+
+List-browser median refreshes were 1.1 ms for 25 rows and 5.0 ms for 250 rows;
+maximums were 2.0 and 7.2 ms. Stable rows, search and mobile checks passed.
+The chart baseline is now HEAD with the resource fixes already included; its
+0.5 versus 0.6 ms quiet-digest medians do not establish a further improvement.
+
+Rerunning the release gateway load command documented above produced:
+
+| Metric | Direct | Compatible gateway | Compact query |
+| --- | --- | --- | --- |
+| Requests / errors | 100 / 0 | 100 / 0 | 100 / 0 |
+| Upstream requests | 100 | 3 | 6 |
+| p95 / p99 ms | 26.544 / 30.105 | 13.496 / 15.436 | 13.935 / 14.231 |
+| Logical requests/s | 24.769 | 24.929 | 24.955 |
+| Response bytes | 29,456,800 | 29,456,800 | 526,200 |
+| Combined process CPU ms | 265.625 | 109.375 | 78.125 |
+| End-of-phase working set bytes | 26,238,976 | 37,670,912 | 37,539,840 |
+
+The same short-run, phase-order, shared-process and retained-slot limitations
+apply. Compact responses again used 98.2% fewer bytes, but the current frontend
+still uses compatible RPC and does not receive that compact-query benefit.
+No production freeze fix or capacity improvement is established. Build warnings
+remain for legacy dependencies and outdated Browserslist data; the existing Gulp
+lint task is not substantive ESLint analysis. No production deployment occurred.
+
+`node tests/performance/stall-browser.cjs` also passed all eight HTTP/WebSocket
+cases (20/25 tasks, 1/100 files, including 1,500 ms delayed replies). Every case
+observed four fresh updates, at most one outstanding list request, zero browser
+errors and zero long tasks. Maximum update gaps were 1,014.9 ms without delay
+and 2,010.3 ms with delay. This synthetic run did not reproduce a freeze.
+
+### Gateway browser integration and navigation fix (2026-11-11)
+
+Working tree based on `8248fce`; Windows x64, Node 26.13.0, Rust 1.99.1,
+headless Edge 157.0.4341.46 and Docker Desktop Linux/amd64. Gateway mode now
+requests compact 100-row pages with server search/order; direct aria2 remains
+available. See GATEWAY-INTEGRATION.md for intentional page-scoped selection,
+absolute waiting-queue positions, private configuration and limits.
+
+A click-based regression reproduced the navigation failure: an RPC connection
+error's SweetAlert overlay intercepted sidebar clicks. The old smoke test loaded
+URLs directly and missed it. RPC errors now use translated escaped nonmodal
+notifications. The revised browser smoke clicks all eight aria2 settings sections,
+AriaNg settings, list/status/new routes and back/forward while RPC is unavailable.
+It also checks theme/language persistence, translation, mobile width and errors.
+
+Passed checks:
+
+- Standard and all-in-one frontend builds; Rust fmt, warnings-denied Clippy,
+  18 tests and locked release build.
+- `node tests/http-rpc.cjs`: HTTP 200 JSON-RPC errors, malformed/non-JSON replies,
+  transport/auth failures, callback settlement and same-origin credential limits.
+- `node tests/gateway-ui.cjs`: one client, 250 synthetic task summaries with
+  100-file counts, 100 rows maximum, server search/order, page selection reset,
+  absolute queue index 103 on page two, one expired-revision recovery and a
+  1,500 ms delayed reply. Maximum one list request in flight, zero uncaught browser
+  errors, no late route writes. Also checks escaped RPC error text, unauthorized
+  navigation and profile mode retention through export/import.
+- Direct HTTP/WebSocket browser RPC, list identity/search/mobile checks, chart
+  resources, task processing, detail refresh and WebSocket recovery regressions.
+- Two browser clients through the actual Nginx -> Linux gateway -> disposable
+  aria2 path: compact waiting summaries, detail links, every settings section,
+  multicall, task options and authentication. Thirty browser RPCs in that run.
+  Nginx configuration validation and all three Compose health checks passed.
+  Gateway ran as www-data with read-only root and no published port; SIGTERM
+  exited with code zero and restart restored health.
+
+The 250-row direct-list browser check returned a 7.1 ms median refresh and 8.4 ms
+maximum in this rerun (25 rows: 1.0/1.7 ms). This is a current-build smoke timing,
+not a before/after rendering comparison. The compact UI fixture verifies bounded
+rows and behavior rather than production paint or throughput.
+
+The release load harness also passed 100 requests per phase with zero errors.
+Compatible responses totaled 29,456,800 bytes; compact responses now total
+578,700 bytes, including the added torrent-identity field. A Docker rebuild
+ran concurrently, so latency/CPU/resource timings from this run are not used to
+claim an improvement. Prior workload/phase-order/shared-process limitations
+still apply. No production capacity or reported-freeze fix is established.
+
+Direct ESLint comparison of the ten affected JS files, normalizing LF in the
+baseline, found 76 existing findings versus 75 current findings. Three new scope
+assignments explicitly retain the existing controller/template contract with
+narrow controller-as suppressions; no additional unsuppressed findings remain.
+The Gulp lint task itself remains non-substantive. Legacy dependency/Browserslist
+build warnings remain. Credentials were kept in ignored local fixture files;
+no production configuration was read or deployed.

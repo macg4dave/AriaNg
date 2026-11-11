@@ -123,7 +123,7 @@
             }
 
             for (var i = 0; i < selectedTasks.length; i++) {
-                if (!selectedTasks[i].bittorrent || !selectedTasks[i].infoHash) {
+                if ((!selectedTasks[i].bittorrent && !selectedTasks[i].isBitTorrent) || !selectedTasks[i].infoHash) {
                     return false;
                 }
             }

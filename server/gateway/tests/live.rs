@@ -19,6 +19,7 @@ async fn browser_and_real_aria2() {
     );
     let base = "http://127.0.0.1:8080";
     let gateway = Gateway::new(Config {
+        allow_network_listener: false,
         listen: (Ipv4Addr::LOCALHOST, 0).into(),
         browser_origin: base.into(),
         servers: vec![ServerConfig {
@@ -62,7 +63,8 @@ async fn browser_and_real_aria2() {
     // Browser runner emits only sanitized aggregate output.
     assert!(
         output.status.success(),
-        "gateway browser/aria2 compatibility check failed"
+        "gateway browser/aria2 compatibility check failed: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
     println!("{}", String::from_utf8_lossy(&output.stdout));
 }

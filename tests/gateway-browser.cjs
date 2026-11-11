@@ -5,10 +5,11 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { chromium } = require(path.resolve('.local/browser-tools/node_modules/playwright'));
 
-const base = 'http://127.0.0.1:8080';
+const base = process.env.GATEWAY_FIXTURE_ORIGIN || 'http://127.0.0.1:8080';
 const endpoint = process.env.GATEWAY_FIXTURE_URL;
 const token = process.env.GATEWAY_FIXTURE_TOKEN;
 const upstreamToken = process.env.ARIA2_FIXTURE_TOKEN;
+let stage = 'startup';
 
 (async () => {
     assert.ok(endpoint && token && upstreamToken, 'Run through the Rust fixture launcher');
@@ -28,14 +29,22 @@ const upstreamToken = process.env.ARIA2_FIXTURE_TOKEN;
         gid = await rpc('aria2.addUri', [['http://web:8080/test-fixture.bin'], {
             pause: 'true', out: 'gateway-fixture-' + crypto.randomUUID() + '.bin'
         }]);
+        const page = await rpc('gateway.listTasks', [{ source: 'waiting', search: 'gateway-fixture-', limit: 10 }]);
+        assert.equal(page.tasks.length, 1);
+        assert.equal(page.tasks[0].gid, gid);
+        assert.equal(page.tasks[0].fileCount, 1);
+        assert.ok(!Object.hasOwn(page.tasks[0], 'files'));
+        const same = await rpc('gateway.listTasks', [{ source: 'waiting', search: 'gateway-fixture-', snapshot: page.snapshot }]);
+        assert.equal(same.tasks[0].gid, gid);
         for (let i = 0; i < 2; i++) {
+            stage = 'client ' + i + ' startup';
             const context = await browser.newContext();
             contexts.push(context);
             await context.addInitScript(settings => {
                 localStorage.setItem('AriaNg.Options', JSON.stringify(settings));
-            }, { rpcHost: '127.0.0.1', rpcPort: '8080', rpcInterface: 'v1/servers/fixture/rpc',
-                protocol: 'http', httpMethod: 'POST', secret: '',
-                rpcRequestHeaders: 'Authorization: Bearer ' + token,
+            }, { rpcHost: new URL(base).hostname, rpcPort: new URL(base).port, rpcInterface: 'v1/servers/fixture/rpc',
+                protocol: 'http', httpMethod: 'POST', rpcMode: 'gateway', secret: Buffer.from(token).toString('base64'),
+                rpcRequestHeaders: '',
                 language: 'en', extendRpcServers: [], globalStatRefreshInterval: 1000,
                 downloadTaskRefreshInterval: 1000 });
             // Stand in for the production same-origin reverse proxy while exercising
@@ -43,6 +52,11 @@ const upstreamToken = process.env.ARIA2_FIXTURE_TOKEN;
             await context.route(base + '/v1/servers/fixture/rpc', async route => {
                 requests++;
                 assert.ok(!route.request().postData().includes(upstreamToken));
+                assert.ok(!route.request().postData().includes(token));
+                assert.ok(route.request().headers().authorization === 'Bearer ' + token, 'Browser credential forwarding failed');
+                if (process.env.GATEWAY_FIXTURE_PROXY === '1') {
+                    return route.continue();
+                }
                 const response = await context.request.post(endpoint, {
                     headers: { ...route.request().headers(), origin: base },
                     data: route.request().postData()
@@ -54,15 +68,34 @@ const upstreamToken = process.env.ARIA2_FIXTURE_TOKEN;
             const errors = [];
             page.on('pageerror', () => errors.push('uncaught browser error'));
             await page.goto(base + '/#!/waiting', { waitUntil: 'domcontentloaded' });
+            stage = 'client ' + i + ' compact list';
             await page.waitForFunction(expected => document.body.textContent.includes(expected), 'gateway-fixture-');
+            stage = 'client ' + i + ' summary file count';
+            assert.equal(await page.locator('.task-files a').first().innerText(), '(1 Files)');
+            assert.equal(await page.locator('.task-table-body > .row').count(), 1);
+            stage = 'client ' + i + ' version';
             const version = await page.evaluate(() => new Promise(resolve => {
                 angular.element(document.body).injector().get('aria2RpcService').getVersion({
                     silent: true, callback: response => resolve(response.success)
                 });
             }));
             assert.equal(version, true);
-            await page.goto(base + '/#!/task/detail/' + gid, { waitUntil: 'domcontentloaded' });
+            stage = 'client ' + i + ' task detail';
+            await page.locator('.task-files a').first().click();
             await page.waitForFunction(expected => document.body.textContent.includes(expected), 'gateway-fixture-');
+            await page.waitForFunction(expected => location.hash === '#!/task/detail/' + expected, gid);
+            await page.locator('a[href="#!/settings/ariang"]').click();
+            stage = 'client ' + i + ' AriaNg settings';
+            await page.locator('select[ng-model="context.settings.theme"]').waitFor();
+            await page.locator('.sidebar .treeview > a').click();
+            for (const settings of ['basic', 'http-ftp-sftp', 'http', 'ftp-sftp', 'bt', 'metalink', 'rpc', 'advanced']) {
+                stage = 'client ' + i + ' aria2 settings ' + settings;
+                await page.locator('a[href="#!/settings/aria2/' + settings + '"]').click();
+                await page.waitForFunction(expected => location.hash === '#!/settings/aria2/' + expected, settings);
+                await page.locator('.settings-table').first().waitFor();
+            }
+            await page.locator('a[href="#!/status"]').click();
+            await page.waitForFunction(() => location.hash === '#!/status');
             await page.setViewportSize({ width: 390, height: 844 });
             assert.deepEqual(errors, []);
         }
@@ -89,7 +122,7 @@ const upstreamToken = process.env.ARIA2_FIXTURE_TOKEN;
             await rpc('aria2.remove', [gid]);
         }
     }
-})().catch(() => {
-    console.error('Gateway browser fixture failed; inspect disposable services without exposing credentials.');
+})().catch(error => {
+    console.error('Gateway browser fixture failed at ' + stage + ': ' + error.name);
     process.exitCode = 1;
 });

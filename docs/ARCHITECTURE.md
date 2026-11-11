@@ -5,7 +5,7 @@
 This fork starts from AriaNg: an AngularJS browser application built with Gulp.
 The standard build produces static assets in `dist/`; the all-in-one build embeds
 assets in a single HTML file. An optional Rust RPC gateway now lives in
-`server/gateway/`; its implemented boundary and limits are in [Gateway](GATEWAY.md).
+`server/gateway/`.
 
 The browser communicates with separately managed aria2 services using HTTP or
 WebSocket RPC. The UI supports multiple RPC servers, task management, settings,
@@ -51,15 +51,16 @@ does not select production hosting or authentication; see [Docker testing](DOCKE
 
 ### Rust backend assessment (2026-11-11; incrementally implemented)
 
-The requested server language is Rust. The first implementation supplies a
-compatible RPC endpoint, bounded shared list/global-stat snapshots, and forwarded
-detail/mutation calls. See GATEWAY.md for its current contract. The remaining
-proposed processing work is a same-origin RPC gateway
-that owns bounded upstream polling per authorized server, derives compact task
-summaries, and offers filtered/sorted pages or snapshot updates to clients. This
-could remove duplicated polling across browser clients and avoid delivering full
-file inventories for list rendering. Rust fits bounded snapshot storage and CPU
-work on large inventories; performance remains to be measured.
+The Rust backend supplies compatible RPC, bounded shared polling and forwarded
+detail/mutation calls. `gateway.listTasks` now derives compact summaries and filters,
+sorts and pages them on the server. Queries share one canonical snapshot per list
+source, with revision checks that reject changed snapshots between page requests.
+Summaries omit files/pieces/peers; detail RPC retains full data. Each source is
+bounded to 1,000 tasks (oversized sources fail rather than silently truncate), and
+pages to 200 rows. Explicit browser gateway profiles now request 100-row compact
+pages with server search/order, revision recovery and page-scoped selection.
+Direct HTTP/WebSocket profiles retain compatible aria2 methods. See
+[Gateway integration](GATEWAY-INTEGRATION.md) for configuration and behavior.
 
 Current code findings and initial fixes:
 
@@ -91,19 +92,20 @@ Current code findings and initial fixes:
   so this needs no saved-settings migration. The bound is a client retention policy,
   not a workload capacity claim.
 
-The current list still filters/sorts in Angular digests and renders all matching
-rows. A backend alone cannot remove DOM/digest cost. Bounded rendering needs a
-separate compatible design for selection, keyboard actions, and waiting-list drag
-positions. Waiting/stopped requests currently default to 1,000 items; active tasks
-have no equivalent limit. Pagination must preserve ordering and task controls.
+Direct-mode lists still filter/sort in Angular digests and render all matching
+rows. Gateway-mode lists render at most 100 summaries and bypass those filters.
+Selection and keyboard actions apply to the displayed page; page/search/order
+changes clear selection. Waiting drag uses absolute page offsets and is disabled
+for search/reversed/custom orders. Direct waiting/stopped requests still default
+to 1,000 items; direct active tasks have no equivalent bound.
 
 The compatibility implementation fixes destinations, upstream credentials and
 browser bearer authentication in private configuration, with per-scope server
 authorization. It bounds snapshots/payloads, deadlines, cancellation, freshness
 and admission. Slow-reader connection/write limits require a reverse proxy.
 Direct HTTP/WebSocket RPC and local settings remain available; gateway HTTP
-profiles explicitly opt in. Browser sorting/search/rendering remain unchanged.
-Static deployment remains the implemented deployment contract.
+profiles explicitly opt in. The optional Compose gateway image and same-origin
+Nginx route support local integration. Static SSH deployment remains separate.
 
 The versioned compatibility API, authentication and signal handling are implemented.
 Production service installation, readiness and binary/frontend rollback packaging

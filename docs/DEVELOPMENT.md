@@ -97,12 +97,21 @@ using the optional JS tooling above. No new Python dependency is needed.
 
 ## Application server components
 
+Browser integration and optional Compose gateway setup are documented in
+[Gateway integration](GATEWAY-INTEGRATION.md). Run `node tests/http-rpc.cjs`
+for HTTP settlement/credential checks and `node tests/gateway-ui.cjs` for compact
+list paging/search/order/selection and recovery checks against intercepted fixtures.
+`node tests/browser-smoke.cjs` clicks sidebar/toolbar links and every settings
+section while disconnected, including browser back/forward; loading URLs directly
+alone does not verify that overlays allow navigation.
+
 The optional application gateway is a standalone Rust 2024 crate in
 `server/gateway/`, minimum Rust 1.85 (tested with 1.99.1 on Windows x64).
 `src/lib.rs` implements API/polling lifecycle, `src/main.rs` private-config startup,
 and Rust tests plus `tests/gateway-browser.cjs` check compatibility. Its lockfile
-is tracked. Startup, exact checks and the supported boundary are in
-[Gateway](GATEWAY.md). Linux signal handling is included but not runtime-validated.
+is tracked. Linux container startup, proxied browser RPC and clean SIGTERM exit
+have been validated with the optional Compose service; host service installation
+and production rollout remain separate.
 No Cargo workspace or Go module is introduced.
 Follow language-native formatting (gofmt or rustfmt); JavaScript
 formatting conventions do not override them. Maintain generated dependency locks.

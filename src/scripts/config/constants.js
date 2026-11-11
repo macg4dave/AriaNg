@@ -36,6 +36,7 @@
         rpcInterface: 'jsonrpc',
         protocol: 'http',
         httpMethod: 'POST',
+        rpcMode: 'direct',
         rpcRequestHeaders: '',
         secret: '',
         settingHistory: {},

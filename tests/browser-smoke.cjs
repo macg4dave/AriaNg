@@ -21,12 +21,28 @@ const origin = 'http://127.0.0.1:8080';
         let failedAssets = 0;
         page.on('pageerror', () => { browserErrors++; });
         page.on('response', response => { if (response.status() >= 400) { failedAssets++; } });
+        await page.goto(origin + '/#!/downloading', { waitUntil: 'networkidle' });
         for (const route of ['downloading', 'waiting', 'stopped', 'new', 'settings/ariang', 'status']) {
-            await page.goto(origin + '/#!/' + route, { waitUntil: 'networkidle' });
+            await page.locator('a[href="#!/' + route + '"]').first().click();
+            await page.waitForFunction(expected => angular.element(document.body).injector()
+                .get('$location').path() === '/' + expected, route);
+            await page.waitForTimeout(100);
             assert.equal(await page.evaluate(() => angular.element(document.body).injector()
                 .get('$location').path()), '/' + route);
             assert.ok((await page.locator('.content-wrapper').innerText()).trim());
         }
+        await page.locator('.sidebar .treeview > a').click();
+        for (const route of ['basic', 'http-ftp-sftp', 'http', 'ftp-sftp', 'bt', 'metalink', 'rpc', 'advanced']) {
+            await page.locator('a[href="#!/settings/aria2/' + route + '"]').click();
+            await page.waitForFunction(expected => angular.element(document.body).injector()
+                .get('$location').path() === '/settings/aria2/' + expected, route);
+            await page.locator('.settings-table').first().waitFor();
+        }
+        await page.goBack();
+        await page.waitForFunction(() => location.hash === '#!/settings/aria2/rpc');
+        await page.goForward();
+        await page.waitForFunction(() => location.hash === '#!/settings/aria2/advanced');
+        assert.equal(await page.locator('.sweet-overlay:visible').count(), 0);
         await page.goto(origin + '/#!/settings/ariang', { waitUntil: 'networkidle' });
         const theme = page.locator('select[ng-model="context.settings.theme"]');
         await theme.selectOption('dark');
@@ -49,7 +65,7 @@ const origin = 'http://127.0.0.1:8080';
         assert.equal(browserErrors, 0);
         assert.equal(failedAssets, 0);
         await context.close();
-        console.log('PASS browser: six routes, themes, language persistence/translation, mobile width, assets and runtime errors.');
+        console.log('PASS browser: sidebar/toolbar clicks, all settings routes while disconnected, back/forward, themes, language persistence/translation, mobile width, assets and runtime errors.');
     } finally { await browser.close(); }
 })().catch(() => {
     console.error('Browser smoke check failed; browser settings and request details omitted.');

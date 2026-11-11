@@ -129,7 +129,7 @@ const dependencies = {
     $rootScope: root, $scope: scope, $location: { path: () => '/downloading' },
     $interval: interval, dragulaService: { options: () => {} },
     aria2RpcErrors: { Unauthorized: { message: 'Unauthorized' } },
-    ariaNgSettingService: { getDownloadTaskRefreshInterval: () => 1000 },
+    ariaNgSettingService: { getDownloadTaskRefreshInterval: () => 1000, isCurrentRpcUseGateway: () => false },
     ariaNgCommonService: {},
     aria2TaskService: { getTaskList: (location, full, handler) => {
         requests++;

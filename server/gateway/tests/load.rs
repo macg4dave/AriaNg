@@ -74,7 +74,7 @@ async fn compare_direct_and_shared_polling() {
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = calls.clone();
     let tasks: Vec<_> = (0..25).map(|i| json!({
-        "gid":format!("{i:016x}"), "status":"active", "totalLength":"1024", "completedLength":"512",
+        "gid":format!("{i:016x}"), "status":"active", "totalLength":"1024", "completedLength":"512", "downloadSpeed":"10", "uploadSpeed":"0",
         "files":(0..100).map(|j| json!({"index":j+1,"path":format!("/synthetic/task-{i}/file-{j}"),"length":"1024","completedLength":"512","selected":"true","uris":[]})).collect::<Vec<_>>()
     })).collect();
     let payload = Arc::new(Value::Array(tasks));
@@ -96,6 +96,7 @@ async fn compare_direct_and_shared_polling() {
     let token = format!("{:x}", Sha256::digest("synthetic-load-browser"));
     let secret = format!("{:x}", Sha256::digest("synthetic-load-upstream"));
     let gateway = Gateway::new(Config {
+        allow_network_listener: false,
         listen: (Ipv4Addr::LOCALHOST, 0).into(),
         browser_origin: "https://example.invalid".into(),
         servers: vec![ServerConfig {
@@ -120,7 +121,7 @@ async fn compare_direct_and_shared_polling() {
     let (stop, receiver) = watch::channel(false);
     let polling = gateway.start_polling(receiver);
     let client = reqwest::Client::new();
-    for mode in ["direct", "gateway"] {
+    for mode in ["direct", "gateway", "compact"] {
         let before_calls = calls.load(Ordering::SeqCst);
         let (cpu_before, _) = resources();
         let start = Instant::now();
@@ -148,8 +149,10 @@ async fn compare_direct_and_shared_polling() {
                 let token = token.clone();
                 clients.spawn(async move {
                     let start = Instant::now();
+                    let method = if mode == "compact" { "gateway.listTasks" } else { "aria2.tellActive" };
+                    let params = if mode == "compact" { json!([{"limit":25}]) } else { params };
                     let response = client.post(url).bearer_auth(token)
-                        .json(&json!({"jsonrpc":"2.0","id":"gateway","method":"aria2.tellActive","params":params}))
+                        .json(&json!({"jsonrpc":"2.0","id":"gateway","method":method,"params":params}))
                         .send().await.unwrap();
                     let ok = response.status().is_success();
                     let body = response.bytes().await.unwrap();

@@ -222,6 +222,11 @@
                     }
                 }
 
+                if (options.plainText) {
+                    title = angular.element('<div>').text(title || '').html();
+                    content = angular.element('<div>').text(content || '').html();
+                }
+
                 return notifyInPage(title, content, options);
             },
             clearNotificationInPage: function () {

@@ -1,0 +1,27 @@
+# Optional local gateway. Supply private configuration outside the checkout.
+services:
+  web:
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+  gateway:
+    build: ./server/gateway
+    image: ariang-gateway-test:local
+    read_only: true
+    init: true
+    secrets:
+      - gateway_config
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 128
+    depends_on:
+      aria2:
+        condition: service_healthy
+
+secrets:
+  gateway_config:
+    file: ${GATEWAY_CONFIG_FILE:?Set GATEWAY_CONFIG_FILE to a private gateway TOML file}

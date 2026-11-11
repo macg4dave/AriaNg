@@ -1,10 +1,15 @@
 (function () {
     'use strict';
 
-    angular.module('ariaNg').factory('aria2HttpRpcService', ['$http', 'ariaNgConstants', 'ariaNgCommonService', 'ariaNgSettingService', 'ariaNgLogService', function ($http, ariaNgConstants, ariaNgCommonService, ariaNgSettingService, ariaNgLogService) {
+    angular.module('ariaNg').factory('aria2HttpRpcService', ['$http', '$q', '$window', 'ariaNgConstants', 'ariaNgCommonService', 'ariaNgSettingService', function ($http, $q, $window, ariaNgConstants, ariaNgCommonService, ariaNgSettingService) {
         var rpcUrl = ariaNgSettingService.getCurrentRpcUrl();
         var method = ariaNgSettingService.getCurrentRpcHttpMethod();
         var requestHeaders = ariaNgSettingService.getCurrentRpcRequestHeaders();
+        var gatewayMode = ariaNgSettingService.isCurrentRpcUseGateway();
+        var gatewayToken = gatewayMode ? ariaNgSettingService.getCurrentRpcSecret() : '';
+        if (gatewayMode) {
+            method = 'POST';
+        }
 
         var getUrlWithQueryString = function (url, parameters) {
             if (!url || url.length < 1) {
@@ -83,18 +88,51 @@
                         var name = items[0].trim();
                         var value = items[1].trim();
 
-                        requestContext.headers[name] = value;
+                        if (!gatewayMode || name.toLowerCase() !== 'authorization') {
+                            requestContext.headers[name] = value;
+                        }
                     }
                 }
 
-                ariaNgLogService.debug('[aria2HttpRpcService.request] ' + (context && context.requestBody && context.requestBody.method ? context.requestBody.method + ' ' : '') + 'request start', requestContext);
+                if (gatewayToken) {
+                    requestContext.headers.Authorization = 'Bearer ' + gatewayToken;
+                }
+
+                var connectionError = function (response) {
+                    var data = response && response.data;
+                    var error = data && data.error && angular.isString(data.error.message) ? data.error : { message: 'Cannot connect to aria2!' };
+                    var callback = data && data.error && response.status >= 200 && response.status < 500 &&
+                            response.status !== 401 && response.status !== 403 ?
+                        context.connectionSuccessCallback : context.connectionFailedCallback;
+                    if (callback) {
+                        callback({ rpcUrl: rpcUrl, method: method });
+                    }
+                    if (context.errorCallback) {
+                        context.errorCallback(data && data.id, error);
+                    }
+                };
+
+                // Gateway credentials may only go to the configured same-origin proxy.
+                var validGateway = false;
+                if (gatewayMode) {
+                    try {
+                        var gatewayUrl = new $window.URL(rpcUrl);
+                        validGateway = gatewayUrl.origin === $window.location.origin &&
+                            (gatewayUrl.protocol === 'http:' || gatewayUrl.protocol === 'https:');
+                    } catch (error) {
+                        validGateway = false;
+                    }
+                }
+                if (gatewayMode && !validGateway) {
+                    connectionError({ data: { error: { message: 'Gateway requires a same-origin HTTP connection.' } } });
+                    return $q.when();
+                }
 
                 return $http(requestContext).then(function onSuccess(response) {
                     var data = response.data;
 
-                    ariaNgLogService.debug('[aria2HttpRpcService.request] ' + (context && context.requestBody && context.requestBody.method ? context.requestBody.method + ' ' : '') + 'response success', response);
-
-                    if (!data) {
+                    if (!data || data.error || !Object.prototype.hasOwnProperty.call(data, 'result')) {
+                        connectionError(response);
                         return;
                     }
 
@@ -108,31 +146,7 @@
                     if (context.successCallback) {
                         context.successCallback(data.id, data.result);
                     }
-                }).catch(function onError(response) {
-                    var data = response.data;
-
-                    ariaNgLogService.debug('[aria2HttpRpcService.request] ' + (context && context.requestBody && context.requestBody.method ? context.requestBody.method + ' ' : '') + 'response error', response);
-
-                    if (!data) {
-                        data = {
-                            id: '-1',
-                            error: {
-                                message: 'Cannot connect to aria2!'
-                            }
-                        };
-
-                        if (context.connectionFailedCallback) {
-                            context.connectionFailedCallback({
-                                rpcUrl: rpcUrl,
-                                method: method
-                            });
-                        }
-                    }
-
-                    if (context.errorCallback) {
-                        context.errorCallback(data.id, data.error);
-                    }
-                });
+                }, connectionError);
             },
             reconnect: function () {
                 //Not implement

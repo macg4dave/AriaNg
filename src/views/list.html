@@ -38,7 +38,7 @@
             </div>
         </div>
         <div class="task-table-body" ng-class="{'draggable': isSupportDragTask()}" dragula="'task-list'" dragula-model="taskContext.list">
-            <div class="row pointer-cursor" ng-repeat="task in taskContext.list | filter: filterTask | taskOrderBy: getOrderType() track by task.gid"
+            <div class="row pointer-cursor" ng-repeat="task in (gatewayEnabled ? taskContext.list : (taskContext.list | filter: filterTask | taskOrderBy: getOrderType())) track by task.gid"
                  data-gid="{{task.gid}}" data-selected="{{!!taskContext.selected[task.gid]}}" data-toggle="context" data-target="#task-table-contextmenu"
                  ng-click="taskContext.selected[task.gid] = !taskContext.selected[task.gid]">
                 <div class="col-md-8 col-sm-7 col-xs-12">
@@ -51,7 +51,7 @@
                     <div class="task-files">
                         <span ng-bind="task.totalLength | readableVolume"></span>
                         <a ng-href="#!/task/detail/{{task.gid}}" title="{{'Click to view task detail' | translate}}">
-                            <span ng-if="task.files" ng-bind="('format.settings.file-count' | translate: {count: task.selectedFileCount})"></span>
+                            <span ng-if="task.files || task.compactSummary" ng-bind="('format.settings.file-count' | translate: {count: task.selectedFileCount})"></span>
                         </a><i class="icon-error fa fa-times" ng-if="task && task.status === 'error' && task.errorDescription" title="{{task.errorDescription | translate}}"></i><i class="icon-seeder fa fa-arrow-up" ng-if="task && task.status === 'active' && task.seeder" title="{{'Seeding' | translate}}"></i>
                         <a ng-if="isTaskRetryable(task)" ng-click="retryTask(task)" title="{{'Retry' | translate}}" translate>Retry</a>
                     </div>
@@ -84,6 +84,14 @@
                     </a>
                 </div>
             </div>
+        </div>
+        <div class="clearfix" ng-if="gatewayEnabled" style="padding: 12px;">
+            <div class="btn-group">
+                <button class="btn btn-default" ng-click="changePage(-1)" ng-disabled="pageState.loading || pageState.offset === 0" translate>Previous Page</button>
+                <button class="btn btn-default" ng-click="changePage(1)" ng-disabled="pageState.loading || pageState.offset + pageState.limit >= pageState.total" translate>Next Page</button>
+            </div>
+            <span translate="Gateway Page" translate-values="{page: (pageState.offset / pageState.limit) + 1, pages: pageState.pages, total: pageState.total}"></span>
+            <p class="help-block" translate>Selection applies to this page.</p>
         </div>
         <div id="task-table-contextmenu">
             <ul class="dropdown-menu" role="menu">

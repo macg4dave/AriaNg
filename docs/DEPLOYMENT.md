@@ -1,5 +1,9 @@
 # Deployment
 
+An optional local Compose gateway image and Nginx route now exercise the browser
+integration; see [Gateway integration](GATEWAY-INTEGRATION.md). They do not extend
+the static SSH operator's production activation/rollback contract described here.
+
 Stage 3 is complete for static releases to a Linux host over SSH. The Rust
 operator tool in `tools/deploy/` implements locked install/build, artifact
 validation, dry-run, transfer, atomic activation, content health checks and
@@ -107,6 +111,4 @@ Browser RPC settings remain local. The optional Rust gateway in `server/gateway/
 is not packaged by this static tool: gateway adoption must extend the contract for compatible binary
 versions, process lifecycle, private runtime config and gateway health/rollback
 under GATE-05. Stage 3 completion applies to the current static architecture.
-See [Gateway](GATEWAY.md) for source startup, private runtime schema, HTTP-profile
-opt-in, health/lifecycle behavior and required reverse-proxy limits. No gateway
-binary was installed, published or activated in production.
+No gateway binary was installed, published or activated in production.

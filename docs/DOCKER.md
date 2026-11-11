@@ -1,5 +1,9 @@
 # Local Docker testing
 
+For the optional Rust gateway image, private runtime configuration and same-origin
+Nginx integration, see [Gateway integration](GATEWAY-INTEGRATION.md). The normal
+Compose command below continues to support direct aria2 without that service.
+
 The test image builds the standard frontend with Node 24 on Debian Bookworm,
 then copies only `dist/` into a Debian Bookworm image running packaged Nginx.
 Node, npm dependencies, Git, and the source checkout are absent from the final

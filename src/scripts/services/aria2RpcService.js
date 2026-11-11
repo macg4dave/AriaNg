@@ -1,10 +1,12 @@
 (function () {
     'use strict';
 
-    angular.module('ariaNg').factory('aria2RpcService', ['$location', '$q', 'aria2RpcConstants', 'aria2RpcErrors', 'aria2AllOptions', 'ariaNgCommonService', 'ariaNgLogService', 'ariaNgSettingService', 'aria2HttpRpcService', 'aria2WebSocketRpcService', function ($location, $q, aria2RpcConstants, aria2RpcErrors, aria2AllOptions, ariaNgCommonService, ariaNgLogService, ariaNgSettingService, aria2HttpRpcService, aria2WebSocketRpcService) {
-        var rpcImplementService = ariaNgSettingService.isCurrentRpcUseWebSocket() ? aria2WebSocketRpcService : aria2HttpRpcService;
+    angular.module('ariaNg').factory('aria2RpcService', ['$location', '$q', 'aria2RpcConstants', 'aria2RpcErrors', 'aria2AllOptions', 'ariaNgCommonService', 'ariaNgLogService', 'ariaNgNotificationService', 'ariaNgSettingService', 'aria2HttpRpcService', 'aria2WebSocketRpcService', function ($location, $q, aria2RpcConstants, aria2RpcErrors, aria2AllOptions, ariaNgCommonService, ariaNgLogService, ariaNgNotificationService, ariaNgSettingService, aria2HttpRpcService, aria2WebSocketRpcService) {
+        var rpcImplementService = ariaNgSettingService.isCurrentRpcUseWebSocket() && !ariaNgSettingService.isCurrentRpcUseGateway() ? aria2WebSocketRpcService : aria2HttpRpcService;
         var isConnected = false;
         var secret = ariaNgSettingService.getCurrentRpcSecret();
+        var gatewayMode = ariaNgSettingService.isCurrentRpcUseGateway();
+        var lastError = null;
 
         var onFirstSuccessCallbacks = [];
         var onOperationSuccessCallbacks = [];
@@ -154,10 +156,16 @@
             ariaNgLogService.error('[aria2RpcService.processError] ' + error.message, error);
 
             if (aria2RpcErrors[error.message] && aria2RpcErrors[error.message].tipTextKey) {
-                ariaNgCommonService.showError(aria2RpcErrors[error.message].tipTextKey);
+                if (lastError !== error.message) {
+                    ariaNgNotificationService.notifyInPage('Error', aria2RpcErrors[error.message].tipTextKey, { type: 'error', plainText: true });
+                }
+                lastError = error.message;
                 return true;
             } else {
-                ariaNgCommonService.showError(error.message);
+                if (lastError !== error.message) {
+                    ariaNgNotificationService.notifyInPage('Error', error.message, { type: 'error', plainText: true });
+                }
+                lastError = error.message;
                 return true;
             }
         };
@@ -165,7 +173,7 @@
         var buildRequestContext = function () {
             var methodName = arguments[0];
             var requestInPage = $location.path();
-            var isSystemMethod = checkIsSystemMethod(methodName);
+            var isSystemMethod = checkIsSystemMethod(methodName) || methodName.indexOf('gateway.') === 0;
             var finalParams = [];
 
             var context = {
@@ -188,7 +196,7 @@
                 fireCustomEvent(onConnectionWaitingToReconnectCallbacks);
             };
 
-            if (secret && !isSystemMethod) {
+            if (secret && !isSystemMethod && !gatewayMode) {
                 finalParams.push(aria2RpcConstants.rpcTokenPrefix + secret);
             }
 
@@ -196,6 +204,7 @@
                 var innerContext = arguments[1];
 
                 context.successCallback = function (id, result) {
+                    lastError = null;
                     if (innerContext.callback) {
                         innerContext.callback({
                             id: id,
@@ -220,7 +229,8 @@
                     var errorProcessed = false;
                     var currentPage = $location.path();
 
-                    if (!innerContext.silent && currentPage === requestInPage) {
+                    if (!innerContext.silent && currentPage === requestInPage &&
+                            !(error && error.code === -32003 && innerContext.query && innerContext.query.snapshot)) {
                         errorProcessed = processError(error);
                     }
 
@@ -314,6 +324,9 @@
         })();
 
         return {
+            listTasks: function (context) {
+                return invoke(buildRequestContext('gateway.listTasks', context, context.query));
+            },
             getBasicTaskParams: function () {
                 return [
                     'gid',

@@ -349,7 +349,7 @@
         };
 
         $rootScope.isTaskRetryable = function (task) {
-            return task && task.status === 'error' && task.errorDescription && !task.bittorrent;
+            return task && task.status === 'error' && task.errorDescription && !task.bittorrent && !task.isBitTorrent;
         };
 
         $rootScope.keydownActions = {

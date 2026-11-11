@@ -221,6 +221,7 @@
                 rpcInterface: setting.rpcInterface,
                 protocol: setting.protocol,
                 httpMethod: setting.httpMethod,
+                rpcMode: setting.rpcMode || 'direct',
                 rpcRequestHeaders: setting.rpcRequestHeaders,
                 secret: setting.secret,
                 settingHistory: angular.copy(setting.settingHistory || {})
@@ -508,6 +509,9 @@
             getCurrentRpcHttpMethod: function () {
                 return getOption('httpMethod');
             },
+            isCurrentRpcUseGateway: function () {
+                return getOption('rpcMode') === 'gateway';
+            },
             getCurrentRpcRequestHeaders: function () {
                 return getOption('rpcRequestHeaders');
             },
@@ -705,6 +709,10 @@
                 }
 
                 if (options.httpMethod !== setting.httpMethod) {
+                    return false;
+                }
+
+                if ((options.rpcMode || 'direct') !== (setting.rpcMode || 'direct')) {
                     return false;
                 }
 

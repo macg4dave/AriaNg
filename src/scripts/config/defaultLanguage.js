@@ -3,6 +3,16 @@
 
     angular.module('ariaNg').config(['$translateProvider', 'ariaNgConstants', function ($translateProvider, ariaNgConstants) {
         var defaultLanguageResource = {
+            'RPC Mode': 'RPC Mode',
+            'Direct aria2': 'Direct aria2',
+            'Gateway': 'Gateway',
+            'Gateway Browser Token': 'Gateway Browser Token',
+            'Gateway uses same-origin HTTP POST. Set the RPC interface to the gateway route and enter its browser bearer token below.': 'Gateway uses same-origin HTTP POST. Set the RPC interface to the gateway route and enter its browser bearer token below.',
+            'Gateway requires a same-origin HTTP connection.': 'Gateway requires a same-origin HTTP connection.',
+            'Previous Page': 'Previous Page',
+            'Next Page': 'Next Page',
+            'Gateway Page': 'Page {{page}} of {{pages}} ({{total}} tasks)',
+            'Selection applies to this page.': 'Selection applies to this page.',
             'AriaNg Version': 'AriaNg Version',
             'Operation Result': 'Operation Result',
             'Operation Succeeded': 'Operation Succeeded',
