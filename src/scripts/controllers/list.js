@@ -6,13 +6,17 @@
         var downloadTaskRefreshPromise = null;
         var pauseDownloadTaskRefresh = false;
         var needRequestWholeInfo = true;
+        var requestInFlight = false;
 
         var refreshDownloadTask = function (silent) {
-            if (pauseDownloadTaskRefresh) {
+            if (pauseDownloadTaskRefresh || requestInFlight) {
                 return;
             }
 
-            return aria2TaskService.getTaskList(location, needRequestWholeInfo, function (response) {
+            var request = {};
+            requestInFlight = request;
+            var promise = aria2TaskService.getTaskList(location, needRequestWholeInfo, function (response) {
+                requestInFlight = false;
                 if (pauseDownloadTaskRefresh) {
                     return;
                 }
@@ -48,7 +52,7 @@
                 }
 
                 if ($rootScope.taskContext.list && $rootScope.taskContext.list.length > 0) {
-                    aria2TaskService.processDownloadTasks($rootScope.taskContext.list);
+                    aria2TaskService.processDownloadTasks($rootScope.taskContext.list, false, !isRequestWholeInfo);
 
                     if (!isRequestWholeInfo) {
                         var hasFullStruct = false;
@@ -72,6 +76,15 @@
 
                 $rootScope.taskContext.enableSelectAll = $rootScope.taskContext.list && $rootScope.taskContext.list.length > 0;
             }, silent);
+
+            var releaseRequest = function () {
+                if (requestInFlight === request) {
+                    requestInFlight = false;
+                }
+            };
+
+            promise.then(releaseRequest, releaseRequest);
+            return promise;
         };
 
         $scope.getOrderType = function () {

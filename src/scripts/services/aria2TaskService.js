@@ -283,15 +283,35 @@
             return combinedPieces;
         };
 
-        var processDownloadTask = function (task, addVirtualFileNode) {
+        var countCompletedPieces = function (bitField, pieceCount) {
+            var count = 0;
+            var counts = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
+
+            if (!bitField || !(pieceCount > 0)) {
+                return count;
+            }
+
+            for (var i = 0; i < bitField.length && i * 4 < pieceCount; i++) {
+                var value = parseInt(bitField[i], 16);
+                var remaining = pieceCount - i * 4;
+
+                if (remaining < 4) {
+                    value = value & (15 << (4 - remaining));
+                }
+
+                count += counts[value] || 0;
+            }
+
+            return count;
+        };
+
+        var processDownloadTask = function (task, addVirtualFileNode, reuseFileDetails) {
             if (!task) {
                 ariaNgLogService.warn('[aria2TaskService.processDownloadTask] task is null');
                 return task;
             }
 
             addVirtualFileNode = addVirtualFileNode && task.bittorrent && task.bittorrent.mode === 'multi';
-
-            var pieceStatus = getPieceStatus(task.bitfield, task.numPieces);
 
             task.totalLength = parseInt(task.totalLength);
             task.completedLength = parseInt(task.completedLength);
@@ -305,7 +325,7 @@
             task.downloadSpeed = parseInt(task.downloadSpeed);
 
             task.numPieces = parseInt(task.numPieces);
-            task.completedPieces = ariaNgCommonService.countArray(pieceStatus, true);
+            task.completedPieces = countCompletedPieces(task.bitfield, task.numPieces);
             task.pieceLength = parseInt(task.pieceLength);
 
             task.idle = task.downloadSpeed === 0;
@@ -323,6 +343,12 @@
             task.hasTaskName = taskNameResult.success;
 
             task.errorDescription = getTaskErrorDescription(task);
+
+            // Basic list polls do not include files: their cached metadata is unchanged.
+            // Detail views and full list responses must always process fresh files.
+            if (reuseFileDetails && angular.isDefined(task.selectedFileCount)) {
+                return task;
+            }
 
             if (task.files) {
                 var selectedFileCount = 0;
@@ -388,16 +414,14 @@
                 return peers;
             }
 
-            var localTaskCompletedPieces = getPieceStatus(task.bitfield, task.numPieces);
-            var localTaskCompletedPieceCount = ariaNgCommonService.countArray(localTaskCompletedPieces, true);
+            var localTaskCompletedPieceCount = countCompletedPieces(task.bitfield, task.numPieces);
             var localTaskCompletedPercent = task.completePercent;
 
             for (var i = 0; i < peers.length; i++) {
                 var peer = peers[i];
                 var upstreamToSpeed = parseInt(peer.uploadSpeed);
                 var downstreamFromSpeed = parseInt(peer.downloadSpeed);
-                var completedPieces = getPieceStatus(peer.bitfield, task.numPieces);
-                var completedPieceCount = ariaNgCommonService.countArray(completedPieces, true);
+                var completedPieceCount = countCompletedPieces(peer.bitfield, task.numPieces);
 
                 peer.name = peer.ip + ':' + peer.port;
                 peer.completePercent = completedPieceCount / task.numPieces * 100;
@@ -973,14 +997,14 @@
                     callback: createTaskEventCallback(this.getTaskStatus, callback, 'error')
                 });
             },
-            processDownloadTasks: function (tasks, addVirtualFileNode) {
+            processDownloadTasks: function (tasks, addVirtualFileNode, reuseFileDetails) {
                 if (!angular.isArray(tasks)) {
                     ariaNgLogService.warn('[aria2TaskService.processDownloadTasks] tasks is not array', tasks);
                     return;
                 }
 
                 for (var i = 0; i < tasks.length; i++) {
-                    processDownloadTask(tasks[i], addVirtualFileNode);
+                    processDownloadTask(tasks[i], addVirtualFileNode, reuseFileDetails);
                 }
             },
             getPieceStatus: function (bitField, pieceCount) {

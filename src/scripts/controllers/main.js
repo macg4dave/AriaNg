@@ -4,6 +4,7 @@
     angular.module('ariaNg').controller('MainController', ['$rootScope', '$scope', '$route', '$window', '$location', '$document', '$interval', 'clipboard', 'aria2RpcErrors', 'ariaNgCommonService', 'ariaNgVersionService', 'ariaNgNotificationService', 'ariaNgSettingService', 'ariaNgMonitorService', 'ariaNgTitleService', 'aria2TaskService', 'aria2SettingService', function ($rootScope, $scope, $route, $window, $location, $document, $interval, clipboard, aria2RpcErrors, ariaNgCommonService, ariaNgVersionService, ariaNgNotificationService, ariaNgSettingService, ariaNgMonitorService, ariaNgTitleService, aria2TaskService, aria2SettingService) {
         var pageTitleRefreshPromise = null;
         var globalStatRefreshPromise = null;
+        var globalStatRequestInFlight = false;
 
         var getTaskListPageType = function () {
             var location = $location.path().substring(1);
@@ -25,7 +26,14 @@
         };
 
         var refreshGlobalStat = function (silent, callback) {
-            return aria2SettingService.getGlobalStat(function (response) {
+            if (globalStatRequestInFlight) {
+                return;
+            }
+
+            var request = {};
+            globalStatRequestInFlight = request;
+            var promise = aria2SettingService.getGlobalStat(function (response) {
+                globalStatRequestInFlight = false;
                 if (!response.success && response.data.message === aria2RpcErrors.Unauthorized.message) {
                     $interval.cancel(globalStatRefreshPromise);
                     return;
@@ -40,6 +48,15 @@
                     callback(response);
                 }
             }, silent);
+
+            var releaseRequest = function () {
+                if (globalStatRequestInFlight === request) {
+                    globalStatRequestInFlight = false;
+                }
+            };
+
+            promise.then(releaseRequest, releaseRequest);
+            return promise;
         };
 
         var getCurrentRPCProfile = function () {

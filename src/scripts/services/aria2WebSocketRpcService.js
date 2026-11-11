@@ -12,6 +12,30 @@
         var sendIdStates = {};
         var eventCallbacks = {};
 
+        var failRequest = function (uniqueId) {
+            var state = sendIdStates[uniqueId];
+
+            if (!state) {
+                return;
+            }
+
+            delete sendIdStates[uniqueId];
+            $timeout.cancel(state.timeout);
+            state.deferred.reject({ success: false, context: state.context });
+
+            if (state.context.errorCallback) {
+                state.context.errorCallback(uniqueId, { message: 'Cannot connect to aria2!' });
+            }
+        };
+
+        var failPendingRequests = function () {
+            var ids = Object.keys(sendIdStates);
+
+            for (var i = 0; i < ids.length; i++) {
+                failRequest(ids[i]);
+            }
+        };
+
         var processRequestFailed = function (request) {
             var content = angular.fromJson(request);
 
@@ -31,20 +55,7 @@
                 return;
             }
 
-            var context = state.context;
-
-            state.deferred.reject({
-                success: false,
-                context: context
-            });
-
-            if (context.errorCallback) {
-                ariaNgLogService.debug('[aria2WebSocketRpcService.processRequestFailed] ' + (context && context.requestBody && context.requestBody.method ? context.requestBody.method + ' ' : '') + 'request failed');
-
-                context.errorCallback(context.id, { message: 'Cannot connect to aria2!' });
-            }
-
-            delete sendIdStates[uniqueId];
+            failRequest(uniqueId);
         };
 
         var processMethodCallback = function (content) {
@@ -62,6 +73,8 @@
 
             var context = state.context;
 
+            delete sendIdStates[uniqueId];
+            $timeout.cancel(state.timeout);
             state.deferred.resolve({
                 success: true,
                 context: context
@@ -84,8 +97,6 @@
 
                 context.errorCallback(context.id, content.error);
             }
-
-            delete sendIdStates[uniqueId];
         };
 
         var processEventCallback = function (content) {
@@ -149,6 +160,7 @@
 
                     socketClient.onClose(function (e) {
                         ariaNgLogService.warn('[aria2WebSocketRpcService.onClose] websocket is closed', e);
+                        failPendingRequests();
 
                         var enableAutoReconnect = ariaNgSettingService.getWebSocketReconnectInterval() > 0;
 
@@ -186,28 +198,7 @@
                 return;
             }
 
-            for (var uniqueId in sendIdStates) {
-                if (!sendIdStates.hasOwnProperty(uniqueId)) {
-                    continue;
-                }
-
-                var state = sendIdStates[uniqueId];
-
-                if (!state) {
-                    delete sendIdStates[uniqueId];
-                    continue;
-                }
-
-                state.deferred.reject({
-                    success: false,
-                    context: state.context
-                });
-
-                ariaNgLogService.debug('[aria2WebSocketRpcService.reconnect] reject old request', state.context);
-                state.context.errorCallback(state.context.id, { message: 'Cannot connect to aria2!' });
-
-                delete sendIdStates[uniqueId];
-            }
+            failPendingRequests();
 
             if (context.connectionReconnectingCallback) {
                 context.connectionReconnectingCallback({
@@ -263,13 +254,22 @@
 
                 var deferred = $q.defer();
 
-                if (client.instance) {
+                // Do not queue operations while disconnected: they could be replayed
+                // after the caller has already timed out or changed servers.
+                if (client.instance && client.instance.readyState === websocketStatusOpen) {
                     sendIdStates[uniqueId] = {
                         context: context,
-                        deferred: deferred
+                        deferred: deferred,
+                        timeout: $timeout(function () {
+                            failRequest(uniqueId);
+                        }, ariaNgConstants.httpRequestTimeout)
                     };
 
-                    client.instance.send(requestBody);
+                    try {
+                        client.instance.send(requestBody);
+                    } catch (ex) {
+                        failRequest(uniqueId);
+                    }
                 } else {
                     deferred.reject({
                         success: false,
@@ -277,7 +277,9 @@
                     });
 
                     ariaNgLogService.debug('[aria2WebSocketRpcService.request] client error', client);
-                    context.errorCallback(context.id, { message: client.error });
+                    if (context.errorCallback) {
+                        context.errorCallback(uniqueId, { message: client.error || 'Cannot connect to aria2!' });
+                    }
                 }
 
                 return deferred.promise;
